@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+asyncpg
+alembic
+httpx
+alpaca-py
+finnhub-python
+anthropic
+apscheduler
+python-dotenv
+pandas
+pytz
+psycopg2-binary
