@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="AlphaCommittee API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="AlphaCommittee API", version="0.2.0", lifespan=lifespan)
 
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
@@ -43,25 +43,35 @@ app.include_router(debates.router, prefix="/api")
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "market_open": is_market_open()}
+
+
+@app.post("/api/run-committee")
+async def run_committee(ticker: str = None):
+    """Manually trigger a full committee session or a single-ticker run."""
+    from backend.orchestrator import run_full_committee, run_committee_for_ticker
+    from backend.broker.alpaca_client import get_portfolio
+    from backend.db.session import AsyncSessionLocal
+    from backend.db.crud import get_peak_portfolio_value
+
+    if ticker:
+        portfolio_data = get_portfolio()
+        async with AsyncSessionLocal() as db:
+            peak = await get_peak_portfolio_value(db)
+        result = await run_committee_for_ticker(ticker.upper(), portfolio_data, peak)
+        return result
+
+    results = await run_full_committee()
+    return {"sessions": results, "count": len(results)}
 
 
 @app.post("/api/test-e2e")
 async def test_end_to_end(ticker: str = "AAPL", db: AsyncSession = Depends(get_db)):
-    """
-    Phase 1 end-to-end smoke test:
-      trigger → base_agent vote → log to DB → place paper order (if market open)
-    """
-    # 1. Create committee session
-    session = await create_session(db, ticker)
-
-    # 2. Get stub agent vote via Claude API
+    """Phase 1 smoke test — still available for quick sanity checks."""
     vote = get_stub_vote(ticker)
-
-    # 3. Persist the vote
+    session = await create_session(db, ticker)
     await save_agent_vote(db, session.id, {**vote, "raw_data": {"phase": 1, "test": True}})
 
-    # 4. Place paper order if market is open and vote is BUY
     order_result = None
     order_placed = False
     if is_market_open() and vote.get("action") == "BUY":
@@ -69,14 +79,12 @@ async def test_end_to_end(ticker: str = "AAPL", db: AsyncSession = Depends(get_d
             order_result = place_order(ticker, "buy", vote.get("suggested_position_size_pct", 3))
             order_placed = True
             await log_trade(db, session.id, {
-                "ticker": ticker,
-                "side": "buy",
+                "ticker": ticker, "side": "buy",
                 "alpaca_order_id": order_result["alpaca_order_id"],
             })
         except Exception as e:
             order_result = {"error": str(e)}
 
-    # 5. Finalize session record
     await finalize_session(db, session.id, {
         "decision": vote.get("action", "HOLD"),
         "chairman_rationale": f"[Phase 1 test] {vote.get('rationale', '')}",

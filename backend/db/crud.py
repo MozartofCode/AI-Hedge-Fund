@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.orm import selectinload
 from backend.db.models import CommitteeSession, AgentVote, Trade, PortfolioSnapshot
 
@@ -93,3 +93,8 @@ async def get_latest_portfolio_snapshot(db: AsyncSession):
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+async def get_peak_portfolio_value(db: AsyncSession) -> float:
+    result = await db.execute(select(func.max(PortfolioSnapshot.total_value)))
+    return result.scalar() or 0.0
