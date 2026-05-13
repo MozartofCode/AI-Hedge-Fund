@@ -69,19 +69,40 @@ async def save_portfolio_snapshot(db: AsyncSession, snapshot_data: dict) -> Port
     return snapshot
 
 
-async def get_recent_sessions(db: AsyncSession, limit: int = 20):
+async def get_recent_sessions(db: AsyncSession, limit: int = 20, offset: int = 0):
     result = await db.execute(
         select(CommitteeSession)
         .options(selectinload(CommitteeSession.agent_votes))
         .order_by(desc(CommitteeSession.session_timestamp))
+        .offset(offset)
         .limit(limit)
     )
     return result.scalars().all()
 
 
-async def get_recent_trades(db: AsyncSession, limit: int = 10):
+async def get_recent_trades(db: AsyncSession, limit: int = 20, offset: int = 0):
     result = await db.execute(
-        select(Trade).order_by(desc(Trade.filled_at)).limit(limit)
+        select(Trade)
+        .order_by(desc(Trade.filled_at), desc(Trade.id))
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def get_session_count(db: AsyncSession) -> int:
+    result = await db.execute(select(func.count()).select_from(CommitteeSession))
+    return result.scalar() or 0
+
+
+async def get_trade_count(db: AsyncSession) -> int:
+    result = await db.execute(select(func.count()).select_from(Trade))
+    return result.scalar() or 0
+
+
+async def get_all_portfolio_snapshots(db: AsyncSession) -> list:
+    result = await db.execute(
+        select(PortfolioSnapshot).order_by(PortfolioSnapshot.snapshot_timestamp)
     )
     return result.scalars().all()
 

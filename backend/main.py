@@ -10,7 +10,7 @@ load_dotenv()
 from backend.db.models import Base
 from backend.db.session import engine, get_db
 from backend.db.crud import create_session, save_agent_vote, finalize_session, log_trade
-from backend.api import portfolio, trades, debates
+from backend.api import portfolio, trades, debates, stats
 from backend.scheduler import start_scheduler
 from backend.broker.alpaca_client import is_market_open, place_order
 from backend.agents.base_agent import get_stub_vote
@@ -39,6 +39,7 @@ app.add_middleware(
 app.include_router(portfolio.router, prefix="/api")
 app.include_router(trades.router, prefix="/api")
 app.include_router(debates.router, prefix="/api")
+app.include_router(stats.router, prefix="/api")
 
 
 @app.get("/api/health")

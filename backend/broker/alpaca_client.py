@@ -2,8 +2,8 @@ import os
 from datetime import datetime, timedelta, time
 import pytz
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus, OrderStatus
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -72,6 +72,27 @@ def place_order(ticker: str, side: str, position_size_pct: float) -> dict:
         "notional": notional,
         "status": str(order.status),
     }
+
+
+def get_closed_orders(limit: int = 500) -> list:
+    """Returns filled closed orders — used for win-rate calculation."""
+    try:
+        orders = trading_client.get_orders(
+            filter=GetOrdersRequest(status=QueryOrderStatus.CLOSED, limit=limit)
+        )
+        return [
+            {
+                "symbol": str(o.symbol),
+                "side": o.side.value,
+                "filled_qty": float(o.filled_qty) if o.filled_qty else 0.0,
+                "filled_avg_price": float(o.filled_avg_price) if o.filled_avg_price else 0.0,
+                "filled_at": str(o.filled_at) if o.filled_at else None,
+            }
+            for o in orders
+            if o.status == OrderStatus.FILLED and o.filled_avg_price
+        ]
+    except Exception:
+        return []
 
 
 def get_historical_bars(ticker: str, days: int = 30) -> list:
