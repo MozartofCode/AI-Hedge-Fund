@@ -64,7 +64,7 @@ def get_vote(ticker: str) -> dict:
             "revenue_growth_pct": rev_growth,
             "debt_to_equity": dte,
             "free_cash_flow_trend": fcf[:4],
-            "analyst_buy": analyst.get("analystRatingsbuy"),
+            "analyst_buy": analyst.get("analystRatingsBuy"),
             "analyst_hold": analyst.get("analystRatingsHold"),
             "analyst_sell": analyst.get("analystRatingsSell"),
             "upcoming_earnings": upcoming_earnings,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import AgentCard from '../components/AgentCard'
 
@@ -135,6 +135,9 @@ export default function Debates() {
   const [pages, setPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  // Track whether we've done the initial auto-select so the 60s interval
+  // never overwrites a session the user has explicitly chosen.
+  const hasAutoSelected = useRef(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -142,14 +145,16 @@ export default function Debates() {
       setSessions(data.items ?? [])
       setPages(data.pages ?? 1)
       setTotal(data.total ?? 0)
-      // Auto-select first session if none selected
-      if (!selected && data.items?.length) setSelected(data.items[0])
+      if (!hasAutoSelected.current && data.items?.length) {
+        setSelected(data.items[0])
+        hasAutoSelected.current = true
+      }
     } catch (e) {
       console.error('Debates refresh failed:', e)
     } finally {
       setLoading(false)
     }
-  }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [page])
 
   useEffect(() => {
     setLoading(true)

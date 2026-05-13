@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
@@ -10,7 +11,7 @@ from backend.broker.alpaca_client import get_portfolio, get_closed_orders
 router = APIRouter()
 
 
-def _win_rate(closed_orders: list) -> float | None:
+def _win_rate(closed_orders: list) -> Optional[float]:
     """FIFO-match buy/sell pairs per symbol and return fraction that were profitable."""
     by_symbol: dict[str, list] = {}
     for o in closed_orders:
@@ -31,7 +32,7 @@ def _win_rate(closed_orders: list) -> float | None:
     return round(wins / total, 4) if total > 0 else None
 
 
-def _sharpe(snapshots: list) -> float | None:
+def _sharpe(snapshots: list) -> Optional[float]:
     """Annualized Sharpe ratio from portfolio snapshots (risk-free rate = 0)."""
     if len(snapshots) < 2:
         return None
