@@ -1,7 +1,11 @@
+"""
+Technician agent — uses yfinance for OHLCV data and calculates all
+technical indicators locally (no AlphaVantage calls needed).
+"""
 import json
+import yfinance as yf
 from backend.agents.base_agent import call_claude
-from backend.data.alphavantage_client import get_rsi, get_macd, get_sma, get_bbands
-from backend.broker.paper_broker import get_historical_bars
+from backend.data.indicators import calc_rsi, calc_macd, calc_sma, calc_bbands
 
 SYSTEM_PROMPT = """You are the Technician on an AI trading committee. Analyze technical indicators and price action.
 Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
@@ -16,30 +20,42 @@ Weight these signals: RSI overbought >70 / oversold <30, MACD crossovers, Golden
 
 def get_vote(ticker: str) -> dict:
     try:
-        rsi = get_rsi(ticker)
-        macd = get_macd(ticker)
-        sma50 = get_sma(ticker, 50)
-        sma200 = get_sma(ticker, 200)
-        bbands = get_bbands(ticker)
-        bars = get_historical_bars(ticker, days=30)
+        # 250 days gives enough history for SMA200 + all other indicators
+        hist = yf.Ticker(ticker).history(period="250d")
+        if hist.empty or len(hist) < 30:
+            raise ValueError(f"Insufficient price history for {ticker}")
 
-        recent = bars[-5:] if len(bars) >= 5 else bars
+        closes  = hist["Close"]
+        volumes = hist["Volume"]
+
+        rsi                         = calc_rsi(closes)
+        macd, macd_signal, macd_hist = calc_macd(closes)
+        sma50                       = calc_sma(closes, 50)
+        sma200                      = calc_sma(closes, 200)
+        bb_upper, bb_middle, bb_lower = calc_bbands(closes)
+
+        # Last 5 bars for price-action context
+        recent = hist.tail(5)
         price_action = [
-            {"date": str(b.get("timestamp", "")), "close": b.get("close"), "volume": b.get("volume")}
-            for b in recent
+            {
+                "date":   str(idx.date()),
+                "close":  round(float(row["Close"]), 4),
+                "volume": int(row["Volume"]),
+            }
+            for idx, row in recent.iterrows()
         ]
 
         market_data = {
-            "ticker": ticker,
-            "rsi_14": rsi.get("RSI"),
-            "macd": macd.get("MACD"),
-            "macd_signal": macd.get("MACD_Signal"),
-            "macd_hist": macd.get("MACD_Hist"),
-            "sma_50": sma50.get("SMA"),
-            "sma_200": sma200.get("SMA"),
-            "bb_upper": bbands.get("Real Upper Band"),
-            "bb_middle": bbands.get("Real Middle Band"),
-            "bb_lower": bbands.get("Real Lower Band"),
+            "ticker":             ticker,
+            "rsi_14":             rsi,
+            "macd":               macd,
+            "macd_signal":        macd_signal,
+            "macd_hist":          macd_hist,
+            "sma_50":             sma50,
+            "sma_200":            sma200,
+            "bb_upper":           bb_upper,
+            "bb_middle":          bb_middle,
+            "bb_lower":           bb_lower,
             "recent_price_action": price_action,
         }
 
