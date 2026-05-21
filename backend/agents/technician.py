@@ -1,7 +1,7 @@
 import json
 from backend.agents.base_agent import call_claude
 from backend.data.alphavantage_client import get_rsi, get_macd, get_sma, get_bbands
-from backend.broker.alpaca_client import get_historical_bars
+from backend.broker.paper_broker import get_historical_bars
 
 SYSTEM_PROMPT = """You are the Technician on an AI trading committee. Analyze technical indicators and price action.
 Return ONLY a valid JSON object — no markdown, no explanation, just JSON:

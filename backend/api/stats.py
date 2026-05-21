@@ -5,31 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
 
 from backend.db.session import get_db
-from backend.db.crud import get_session_count, get_trade_count, get_all_portfolio_snapshots
-from backend.broker.alpaca_client import get_portfolio, get_closed_orders
+from backend.db.crud import get_session_count, get_trade_count, get_all_portfolio_snapshots, compute_win_rate
+from backend.broker.paper_broker import get_portfolio
 
 router = APIRouter()
-
-
-def _win_rate(closed_orders: list) -> Optional[float]:
-    """FIFO-match buy/sell pairs per symbol and return fraction that were profitable."""
-    by_symbol: dict[str, list] = {}
-    for o in closed_orders:
-        by_symbol.setdefault(o["symbol"], []).append(o)
-
-    wins = total = 0
-    for orders in by_symbol.values():
-        buys = [o for o in orders if o["side"] == "buy" and o["filled_avg_price"] > 0]
-        sells = [o for o in orders if o["side"] == "sell" and o["filled_avg_price"] > 0]
-        for sell in sells:
-            if buys:
-                buy = buys.pop(0)
-                pl = (sell["filled_avg_price"] - buy["filled_avg_price"]) * sell["filled_qty"]
-                total += 1
-                if pl > 0:
-                    wins += 1
-
-    return round(wins / total, 4) if total > 0 else None
 
 
 def _sharpe(snapshots: list) -> Optional[float]:
@@ -78,7 +57,7 @@ async def stats(db: AsyncSession = Depends(get_db)):
     # Live portfolio
     total_value = cash = 0.0
     try:
-        port = get_portfolio()
+        port = await get_portfolio()
         total_value = port["total_value"]
         cash = port["cash"]
     except Exception:
@@ -98,8 +77,8 @@ async def stats(db: AsyncSession = Depends(get_db)):
     sharpe = _sharpe(snapshots)
     daily_equity = _equity_curve(snapshots)
 
-    # Win rate from Alpaca closed orders
-    win_rate = _win_rate(get_closed_orders())
+    # Win rate from our own trades table (FIFO matching)
+    win_rate = await compute_win_rate(db)
 
     # DB counts
     total_sessions = await get_session_count(db)

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import get_db
 from backend.db.crud import get_latest_portfolio_snapshot
-from backend.broker.alpaca_client import get_portfolio
+from backend.broker.paper_broker import get_portfolio
 
 router = APIRouter()
 
@@ -10,7 +10,7 @@ router = APIRouter()
 @router.get("/portfolio")
 async def portfolio(db: AsyncSession = Depends(get_db)):
     try:
-        live = get_portfolio()
+        live = await get_portfolio()
         positions = live.get("positions", [])
         total_unrealized_pl = round(sum(p.get("unrealized_pl", 0) for p in positions), 2)
         invested = live["total_value"] - live["cash"]

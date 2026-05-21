@@ -8,11 +8,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from backend.db.models import Base
-from backend.db.session import engine, get_db
-from backend.db.crud import create_session, save_agent_vote, finalize_session, log_trade
+from backend.db.session import engine, get_db, AsyncSessionLocal
+from backend.db.crud import create_session, save_agent_vote, finalize_session, log_trade, init_paper_portfolio
 from backend.api import portfolio, trades, debates, stats
 from backend.scheduler import start_scheduler
-from backend.broker.alpaca_client import is_market_open, place_order
+from backend.broker.paper_broker import is_market_open, place_order
 from backend.agents.base_agent import get_stub_vote
 
 
@@ -20,6 +20,9 @@ from backend.agents.base_agent import get_stub_vote
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Seed paper portfolio row if first run
+    async with AsyncSessionLocal() as db:
+        await init_paper_portfolio(db)
     start_scheduler()
     yield
     await engine.dispose()
@@ -51,12 +54,11 @@ async def health():
 async def run_committee(ticker: str = None):
     """Manually trigger a full committee session or a single-ticker run."""
     from backend.orchestrator import run_full_committee, run_committee_for_ticker
-    from backend.broker.alpaca_client import get_portfolio
-    from backend.db.session import AsyncSessionLocal
+    from backend.broker.paper_broker import get_portfolio
     from backend.db.crud import get_peak_portfolio_value
 
     if ticker:
-        portfolio_data = get_portfolio()
+        portfolio_data = await get_portfolio()
         async with AsyncSessionLocal() as db:
             peak = await get_peak_portfolio_value(db)
         result = await run_committee_for_ticker(ticker.upper(), portfolio_data, peak)
@@ -77,11 +79,14 @@ async def test_end_to_end(ticker: str = "AAPL", db: AsyncSession = Depends(get_d
     order_placed = False
     if is_market_open() and vote.get("action") == "BUY":
         try:
-            order_result = place_order(ticker, "buy", vote.get("suggested_position_size_pct", 3))
+            order_result = await place_order(ticker, "buy", vote.get("suggested_position_size_pct", 3))
             order_placed = True
             await log_trade(db, session.id, {
                 "ticker": ticker, "side": "buy",
-                "alpaca_order_id": order_result["alpaca_order_id"],
+                "qty": order_result.get("qty"),
+                "filled_price": order_result.get("price"),
+                "filled_at": None,
+                "order_id": order_result.get("order_id"),
             })
         except Exception as e:
             order_result = {"error": str(e)}
@@ -91,7 +96,7 @@ async def test_end_to_end(ticker: str = "AAPL", db: AsyncSession = Depends(get_d
         "chairman_rationale": f"[Phase 1 test] {vote.get('rationale', '')}",
         "weighted_score": vote.get("confidence", 0.0),
         "order_placed": order_placed,
-        "order_id": order_result.get("alpaca_order_id") if order_result and order_placed else None,
+        "order_id": order_result.get("order_id") if order_result and order_placed else None,
     })
 
     return {

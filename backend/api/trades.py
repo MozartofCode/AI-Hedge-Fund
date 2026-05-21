@@ -21,7 +21,7 @@ async def trades(page: int = 1, limit: int = 20, db: AsyncSession = Depends(get_
                 "qty": t.qty,
                 "filled_price": t.filled_price,
                 "filled_at": t.filled_at.isoformat() if t.filled_at else None,
-                "alpaca_order_id": t.alpaca_order_id,
+                "order_id": t.order_id,
                 "session_id": str(t.session_id) if t.session_id else None,
             }
             for t in rows

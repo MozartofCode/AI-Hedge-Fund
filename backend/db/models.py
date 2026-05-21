@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Float, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, String, Float, Boolean, DateTime, Text, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -47,7 +47,7 @@ class Trade(Base):
     qty = Column(Float)
     filled_price = Column(Float, nullable=True)
     filled_at = Column(DateTime(timezone=True), nullable=True)
-    alpaca_order_id = Column(String(100))
+    order_id = Column(String(100))
 
     session = relationship("CommitteeSession", back_populates="trades")
 
@@ -60,3 +60,26 @@ class PortfolioSnapshot(Base):
     total_value = Column(Float)
     cash = Column(Float)
     positions = Column(JSONB)
+
+
+# ── Paper Trading Tables ──────────────────────────────────────────────────────
+
+class PaperPortfolio(Base):
+    """Single-row table — tracks the paper trading cash balance."""
+    __tablename__ = "paper_portfolio"
+
+    id = Column(Integer, primary_key=True, default=1)
+    cash = Column(Float, nullable=False, default=1_000_000.0)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class PaperPosition(Base):
+    """One row per open ticker position."""
+    __tablename__ = "paper_positions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticker = Column(String(10), nullable=False, unique=True)
+    qty = Column(Float, nullable=False)
+    avg_cost = Column(Float, nullable=False)   # average purchase price per share
+    opened_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
