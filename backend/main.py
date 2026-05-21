@@ -68,6 +68,17 @@ async def run_committee(ticker: str = None):
     return {"sessions": results, "count": len(results)}
 
 
+@app.post("/api/analyze")
+async def analyze(ticker: str):
+    """
+    Run all 5 agents + Chairman for a single ticker.
+    Analysis only — no order placed, works when market is closed.
+    """
+    from backend.orchestrator import analyze_ticker
+    result = await analyze_ticker(ticker.upper().strip())
+    return result
+
+
 @app.post("/api/test-e2e")
 async def test_end_to_end(ticker: str = "AAPL", db: AsyncSession = Depends(get_db)):
     """Phase 1 smoke test — still available for quick sanity checks."""

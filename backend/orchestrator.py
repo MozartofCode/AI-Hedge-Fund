@@ -175,6 +175,90 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
     }
 
 
+async def analyze_ticker(ticker: str) -> dict:
+    """
+    Run all 5 agents and the Chairman for a single ticker.
+    Analysis-only — no order placement, no DB write.
+    Works even when the market is closed.
+    """
+    portfolio = await get_portfolio()
+    async with AsyncSessionLocal() as db:
+        peak_value = await get_peak_portfolio_value(db)
+
+    tech_vote, fund_vote, news_vote, macro_vote = await asyncio.gather(
+        asyncio.to_thread(technician.get_vote, ticker),
+        asyncio.to_thread(fundamentalist.get_vote, ticker),
+        asyncio.to_thread(newshound.get_vote, ticker),
+        asyncio.to_thread(macro_watcher.get_vote, ticker),
+    )
+
+    agent_votes = [tech_vote, fund_vote, news_vote, macro_vote]
+    risk_vote = risk_manager.get_vote(ticker, portfolio=portfolio, peak_value=peak_value)
+
+    risk_off = macro_vote.get("risk_off", False)
+    score = _weighted_score(agent_votes, risk_off=risk_off)
+
+    if risk_vote.get("veto"):
+        decision = "HOLD"
+        position_size = 0.0
+    elif score >= BUY_THRESHOLD:
+        decision = "BUY"
+        position_size = float(risk_vote.get("approved_position_size_pct", 5.0))
+    elif score <= SELL_THRESHOLD:
+        holds_ticker = any(p["ticker"] == ticker for p in portfolio.get("positions", []))
+        decision = "SELL" if holds_ticker else "HOLD"
+        position_size = 5.0 if holds_ticker else 0.0
+    else:
+        decision = "HOLD"
+        position_size = 0.0
+
+    chairman_input = {
+        "ticker": ticker,
+        "weighted_score": score,
+        "risk_off": risk_off,
+        "risk_manager_veto": risk_vote.get("veto"),
+        "risk_manager_reason": risk_vote.get("reason"),
+        "preliminary_decision": decision,
+        "agent_votes": [
+            {"agent": v.get("agent"), "action": v.get("action"),
+             "confidence": v.get("confidence"), "rationale": v.get("rationale")}
+            for v in agent_votes
+        ],
+    }
+    chairman_out = call_claude(
+        CHAIRMAN_SYSTEM,
+        f"Committee analysis: {json.dumps(chairman_input)}",
+        "chairman",
+    )
+
+    final_decision = chairman_out.get("decision", decision)
+    if risk_vote.get("veto") and final_decision == "BUY":
+        final_decision = "HOLD"
+
+    return {
+        "ticker": ticker,
+        "decision": final_decision,
+        "weighted_score": round(score, 4),
+        "chairman_rationale": chairman_out.get("chairman_rationale", "No rationale provided."),
+        "risk_off": risk_off,
+        "risk_manager_veto": risk_vote.get("veto"),
+        "risk_manager_reason": risk_vote.get("reason"),
+        "agent_votes": [
+            {
+                "agent_name": v.get("agent"),
+                "action": v.get("action", "HOLD"),
+                "confidence": v.get("confidence", 0.0),
+                "rationale": v.get("rationale", ""),
+                "veto": v.get("veto", False),
+            }
+            for v in [
+                *agent_votes,
+                {**risk_vote, "agent": "risk_manager", "action": "HOLD"},
+            ]
+        ],
+    }
+
+
 async def run_full_committee(watchlist: list = None) -> list:
     if not is_market_open():
         print("Market is closed — skipping committee session")
