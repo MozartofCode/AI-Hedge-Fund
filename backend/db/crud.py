@@ -165,6 +165,10 @@ async def get_paper_portfolio(db: AsyncSession) -> Optional[PaperPortfolio]:
 
 
 async def init_paper_portfolio(db: AsyncSession) -> PaperPortfolio:
+    # Idempotent: only seed the $1M row if it doesn't exist yet.
+    existing = await get_paper_portfolio(db)
+    if existing is not None:
+        return existing
     portfolio = PaperPortfolio(id=1, cash=STARTING_CASH)
     db.add(portfolio)
     await db.commit()
