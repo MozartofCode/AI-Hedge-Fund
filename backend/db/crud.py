@@ -208,6 +208,11 @@ async def compute_win_rate(db: AsyncSession, market: str = 'US') -> Optional[flo
 
 # ── Paper Trading ─────────────────────────────────────────────────────────────
 
+# Stable integer PKs per market — avoids relying on the DB sequence, which may
+# not exist if the table was originally created with a literal DEFAULT 1.
+_MARKET_PK = {'US': 1, 'BR': 2, 'AR': 3, 'TR': 4, 'NG': 5}
+
+
 async def get_paper_portfolio(
     db: AsyncSession, market: str = 'US'
 ) -> Optional[PaperPortfolio]:
@@ -221,10 +226,14 @@ async def init_paper_portfolio(
     db: AsyncSession, market: str = 'US', starting_cash: float = 1_000_000.0
 ) -> PaperPortfolio:
     """Idempotent: only seed the row if it doesn't exist yet for this market."""
-    existing = await get_paper_portfolio(db, market)
+    mkt = market.upper()
+    existing = await get_paper_portfolio(db, mkt)
     if existing is not None:
         return existing
-    portfolio = PaperPortfolio(market_code=market.upper(), cash=starting_cash)
+    # Use a deterministic integer PK so we never rely on the column's DEFAULT
+    # (the old schema used a literal DEFAULT 1, leaving no real sequence).
+    pk = _MARKET_PK.get(mkt, 100 + abs(hash(mkt)) % 900)
+    portfolio = PaperPortfolio(id=pk, market_code=mkt, cash=starting_cash)
     db.add(portfolio)
     await db.commit()
     await db.refresh(portfolio)

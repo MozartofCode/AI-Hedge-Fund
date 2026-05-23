@@ -21,16 +21,6 @@ from backend.agents.base_agent import get_stub_vote
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Advance the paper_portfolio PK sequence past any rows that were inserted
-        # with an explicit id (old single-row schema used id=1 directly, which
-        # bypasses the sequence and leaves it at 1 — causing conflicts on new inserts).
-        await conn.execute(text(
-            "SELECT setval("
-            "  pg_get_serial_sequence('paper_portfolio', 'id'),"
-            "  COALESCE((SELECT MAX(id) FROM paper_portfolio), 0),"
-            "  true"   # 'true' = last-value-already-used, so nextval returns MAX+1
-            ")"
-        ))
     # Seed paper portfolio rows for all markets (idempotent)
     async with AsyncSessionLocal() as db:
         for mkt_code, cfg in MARKETS.items():
