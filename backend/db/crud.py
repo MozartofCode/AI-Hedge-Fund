@@ -78,6 +78,15 @@ async def save_portfolio_snapshot(db: AsyncSession, snapshot_data: dict) -> Port
     return snapshot
 
 
+async def get_session_by_id(db: AsyncSession, session_id: uuid.UUID):
+    result = await db.execute(
+        select(CommitteeSession)
+        .options(selectinload(CommitteeSession.agent_votes))
+        .where(CommitteeSession.id == session_id)
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_recent_sessions(db: AsyncSession, limit: int = 20, offset: int = 0):
     result = await db.execute(
         select(CommitteeSession)

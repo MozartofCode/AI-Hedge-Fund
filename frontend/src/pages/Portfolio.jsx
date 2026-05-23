@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Treemap, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Treemap, ResponsiveContainer, Tooltip } from 'recharts'
 import { api } from '../api'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -106,39 +106,6 @@ function StatCard({ label, value, sub, color }) {
   )
 }
 
-// ── Equity chart ──────────────────────────────────────────────────────────────
-
-function EquityChart({ data }) {
-  if (!data?.length) {
-    return (
-      <div className="card flex items-center justify-center h-40 text-gray-600 text-sm">
-        Equity curve populates after first portfolio snapshot
-      </div>
-    )
-  }
-  const positive = data[data.length - 1]?.pl >= 0
-  return (
-    <div className="card">
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Equity Curve</h3>
-      <ResponsiveContainer width="100%" height={150}>
-        <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-          <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-          <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false}
-            tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} width={44} />
-          <Tooltip
-            contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 12 }}
-            labelStyle={{ color: '#9ca3af' }}
-            formatter={v => [`$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 'Equity']}
-          />
-          <Line type="monotone" dataKey="equity" stroke={positive ? '#22c55e' : '#ef4444'}
-            strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Portfolio() {
@@ -161,6 +128,7 @@ export default function Portfolio() {
     }
   }, [])
 
+  // Refresh every 60s — live prices update during market hours
   useEffect(() => {
     refresh()
     const id = setInterval(refresh, 60_000)
@@ -208,7 +176,7 @@ export default function Portfolio() {
         <h1 className="text-lg font-bold text-white">Portfolio</h1>
         <div className="flex items-center gap-3">
           {lastUpdated && (
-            <span className="text-xs text-gray-600">Updated {ago} · auto-refreshes every 60s</span>
+            <span className="text-xs text-gray-600">Updated {ago}</span>
           )}
           <button
             onClick={() => refresh(true)}
@@ -254,16 +222,6 @@ export default function Portfolio() {
 
       {/* Hero heatmap */}
       <div className="card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Holdings Heatmap
-            <span className="ml-2 text-gray-700 normal-case font-normal">
-              size = position value · color = unrealized P&L
-            </span>
-          </h2>
-          <span className="text-xs text-gray-600">{positions.length} position{positions.length !== 1 ? 's' : ''}</span>
-        </div>
-
         {heatData.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-80 gap-3">
             <span className="text-4xl">📭</span>
@@ -279,8 +237,6 @@ export default function Portfolio() {
         )}
       </div>
 
-      {/* Equity curve */}
-      <EquityChart data={stats?.daily_equity ?? []} />
     </div>
   )
 }

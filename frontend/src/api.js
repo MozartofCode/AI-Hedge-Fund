@@ -18,5 +18,6 @@ export const api = {
   stats:     ()                     => get('/api/stats'),
   trades:    (page = 1, limit = 20) => get(`/api/trades?page=${page}&limit=${limit}`),
   debates:   (page = 1, limit = 20) => get(`/api/debates?page=${page}&limit=${limit}`),
+  session:   (id)                   => get(`/api/session/${id}`),
   analyze:   (ticker)               => post(`/api/analyze?ticker=${encodeURIComponent(ticker)}`),
 }

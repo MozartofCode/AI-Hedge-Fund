@@ -142,7 +142,8 @@ async def place_order(ticker: str, side: str, position_size_pct: float) -> dict:
                 total_value += pos.qty * pos.avg_cost
 
         notional = round(total_value * (position_size_pct / 100), 2)
-        qty = round(notional / current_price, 6)
+        # Round to nearest whole share (minimum 1)
+        qty = max(1, round(notional / current_price))
 
         if side.lower() == "buy":
             if cash < notional:

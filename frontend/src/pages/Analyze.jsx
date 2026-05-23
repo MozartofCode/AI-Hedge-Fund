@@ -229,15 +229,6 @@ export default function Analyze() {
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
-      {/* Header */}
-      <div>
-        <h1 className="text-lg font-bold text-white">Analyze a Stock</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Enter any ticker and the full 5-agent committee will analyze it in real time.
-          Works even when the market is closed — no order will be placed.
-        </p>
-      </div>
-
       {/* Search bar */}
       <div className="card p-4">
         <div className="flex gap-3">

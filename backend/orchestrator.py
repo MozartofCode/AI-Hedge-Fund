@@ -253,7 +253,8 @@ async def analyze_ticker(ticker: str) -> dict:
             }
             for v in [
                 *agent_votes,
-                {**risk_vote, "agent": "risk_manager", "action": "HOLD"},
+                {**risk_vote, "agent": "risk_manager", "action": "HOLD",
+                 "rationale": risk_vote.get("reason", "")},
             ]
         ],
     }
