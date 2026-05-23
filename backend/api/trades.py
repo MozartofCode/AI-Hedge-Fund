@@ -1,5 +1,5 @@
 import math
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import get_db
 from backend.db.crud import get_recent_trades, get_trade_count
@@ -8,15 +8,23 @@ router = APIRouter()
 
 
 @router.get("/trades")
-async def trades(page: int = 1, limit: int = 20, db: AsyncSession = Depends(get_db)):
+async def trades(
+    page: int = 1,
+    limit: int = 20,
+    market: str = Query('US'),
+    db: AsyncSession = Depends(get_db),
+):
+    mkt    = market.upper()
     offset = (page - 1) * limit
-    rows = await get_recent_trades(db, limit=limit, offset=offset)
-    total = await get_trade_count(db)
+    rows   = await get_recent_trades(db, limit=limit, offset=offset, market=mkt)
+    total  = await get_trade_count(db, market=mkt)
     return {
+        "market": mkt,
         "items": [
             {
                 "id": str(t.id),
                 "ticker": t.ticker,
+                "market": t.market,
                 "side": t.side,
                 "qty": t.qty,
                 "filled_price": t.filled_price,

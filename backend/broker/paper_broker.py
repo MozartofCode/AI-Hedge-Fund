@@ -1,13 +1,11 @@
 """
 Paper trading broker — replaces Alpaca entirely.
 Prices come from yfinance (free, no API key).
-Positions and cash are stored in PostgreSQL.
-Starting balance: $1,000,000.
+Positions and cash are stored in PostgreSQL, keyed by market.
 """
 import uuid
-from datetime import datetime, time
+from datetime import datetime
 
-import pytz
 import yfinance as yf
 
 from backend.db.session import AsyncSessionLocal
@@ -18,19 +16,8 @@ from backend.db.crud import (
     update_paper_cash,
     upsert_paper_position,
     delete_paper_position,
-    STARTING_CASH,
 )
-
-ET = pytz.timezone("America/New_York")
-
-
-# ── Market hours ──────────────────────────────────────────────────────────────
-
-def is_market_open() -> bool:
-    now_et = datetime.now(ET)
-    if now_et.weekday() >= 5:          # Saturday / Sunday
-        return False
-    return time(9, 30) <= now_et.time() <= time(16, 0)
+from backend.markets import is_market_open
 
 
 # ── Price data (yfinance) ─────────────────────────────────────────────────────
@@ -74,13 +61,15 @@ def get_historical_bars(ticker: str, days: int = 30) -> list:
 
 # ── Portfolio state ───────────────────────────────────────────────────────────
 
-async def get_portfolio() -> dict:
-    """Read cash + positions from DB, enrich with live prices."""
+async def get_portfolio(market: str = 'US') -> dict:
+    """Read cash + positions from DB for a given market, enrich with live prices."""
     async with AsyncSessionLocal() as db:
-        portfolio = await get_paper_portfolio(db)
-        positions_rows = await get_paper_positions(db)
+        portfolio = await get_paper_portfolio(db, market)
+        positions_rows = await get_paper_positions(db, market)
 
-    cash = portfolio.cash if portfolio else STARTING_CASH
+    from backend.markets import MARKETS
+    default_cash = MARKETS.get(market.upper(), MARKETS["US"])["starting_cash"]
+    cash = portfolio.cash if portfolio else default_cash
 
     enriched = []
     total_market_value = 0.0
@@ -108,6 +97,7 @@ async def get_portfolio() -> dict:
         total_market_value += mkt_val
 
     return {
+        "market": market.upper(),
         "total_value": round(cash + total_market_value, 2),
         "cash": round(cash, 2),
         "buying_power": round(cash, 2),
@@ -117,21 +107,27 @@ async def get_portfolio() -> dict:
 
 # ── Order execution ───────────────────────────────────────────────────────────
 
-async def place_order(ticker: str, side: str, position_size_pct: float) -> dict:
+async def place_order(
+    ticker: str, side: str, position_size_pct: float, market: str = 'US'
+) -> dict:
     """
-    Execute a paper trade.
+    Execute a paper trade for the given market.
     position_size_pct: percentage of total portfolio value to allocate.
     Returns an order-result dict compatible with what orchestrator expects.
     """
-    if not is_market_open():
-        raise ValueError("Market is closed — orders only accepted 9:30 am–4:00 pm ET")
+    if not is_market_open(market):
+        raise ValueError(
+            f"{market} market is closed — orders only accepted during trading hours"
+        )
 
     current_price = get_current_price(ticker)
 
     async with AsyncSessionLocal() as db:
-        portfolio = await get_paper_portfolio(db)
-        cash = portfolio.cash if portfolio else STARTING_CASH
-        positions = await get_paper_positions(db)
+        portfolio = await get_paper_portfolio(db, market)
+        from backend.markets import MARKETS
+        default_cash = MARKETS.get(market.upper(), MARKETS["US"])["starting_cash"]
+        cash = portfolio.cash if portfolio else default_cash
+        positions = await get_paper_positions(db, market)
 
         # Total portfolio value for position sizing
         total_value = cash
@@ -148,34 +144,34 @@ async def place_order(ticker: str, side: str, position_size_pct: float) -> dict:
         if side.lower() == "buy":
             if cash < notional:
                 raise ValueError(
-                    f"Insufficient cash (${cash:,.2f}) for ${notional:,.2f} order"
+                    f"Insufficient cash ({cash:,.2f}) for {notional:,.2f} order"
                 )
-            await update_paper_cash(db, cash - notional)
+            await update_paper_cash(db, cash - notional, market)
 
-            existing = await get_paper_position(db, ticker)
+            existing = await get_paper_position(db, ticker, market)
             if existing:
                 new_qty = existing.qty + qty
                 new_avg = (
                     (existing.qty * existing.avg_cost) + (qty * current_price)
                 ) / new_qty
-                await upsert_paper_position(db, ticker, new_qty, new_avg)
+                await upsert_paper_position(db, ticker, new_qty, new_avg, market)
             else:
-                await upsert_paper_position(db, ticker, qty, current_price)
+                await upsert_paper_position(db, ticker, qty, current_price, market)
 
         else:  # sell
-            existing = await get_paper_position(db, ticker)
+            existing = await get_paper_position(db, ticker, market)
             if not existing:
                 raise ValueError(f"No open position in {ticker} to sell")
 
             sell_qty = min(qty, existing.qty)
             proceeds = round(sell_qty * current_price, 2)
-            await update_paper_cash(db, cash + proceeds)
+            await update_paper_cash(db, cash + proceeds, market)
 
             remaining = existing.qty - sell_qty
             if remaining < 0.0001:
-                await delete_paper_position(db, ticker)
+                await delete_paper_position(db, ticker, market)
             else:
-                await upsert_paper_position(db, ticker, remaining, existing.avg_cost)
+                await upsert_paper_position(db, ticker, remaining, existing.avg_cost, market)
 
     return {
         "order_id": f"paper-{uuid.uuid4().hex[:8]}",

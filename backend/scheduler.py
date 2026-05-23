@@ -3,56 +3,99 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-ET = pytz.timezone("America/New_York")
-scheduler = AsyncIOScheduler(timezone=ET)
+from backend.markets import MARKETS
+
+scheduler = AsyncIOScheduler()
+
+# Committee session times (local to each market's timezone):
+# US: 10:00, 12:30, 15:00
+# BR: 11:00, 13:30, 16:00
+# AR: 12:00, 14:00, 16:30
+# TR: 10:30, 13:00, 16:30
+# NG: 11:00, 12:30, 13:30
+_MARKET_SESSIONS = {
+    "US": [(10, 0),  (12, 30), (15, 0)],
+    "BR": [(11, 0),  (13, 30), (16, 0)],
+    "AR": [(12, 0),  (14, 0),  (16, 30)],
+    "TR": [(10, 30), (13, 0),  (16, 30)],
+    "NG": [(11, 0),  (12, 30), (13, 30)],
+}
 
 
-async def _committee_job():
-    from backend.orchestrator import run_full_committee
-    from backend.broker.paper_broker import is_market_open
-    now = datetime.now(ET).isoformat()
-    if not is_market_open():
-        print(f"[{now}] Market closed — skipping committee session")
-        return
-    print(f"[{now}] Starting committee session")
-    results = await run_full_committee()
-    print(f"[{now}] Committee complete — {len(results)} tickers processed")
+def _make_committee_job(market_code: str):
+    async def _job():
+        from backend.orchestrator import run_full_committee
+        from backend.markets import is_market_open
+        tz  = pytz.timezone(MARKETS[market_code]["timezone"])
+        now = datetime.now(tz).isoformat()
+        if not is_market_open(market_code):
+            print(f"[{now}] [{market_code}] Market closed — skipping")
+            return
+        print(f"[{now}] [{market_code}] Starting committee session")
+        results = await run_full_committee(market_code)
+        print(f"[{now}] [{market_code}] Committee complete — {len(results)} tickers processed")
+    _job.__name__ = f"_committee_job_{market_code}"
+    return _job
 
 
-async def _snapshot_job():
-    from backend.broker.paper_broker import get_portfolio
-    from backend.db.session import AsyncSessionLocal
-    from backend.db.crud import save_portfolio_snapshot
-    now = datetime.now(ET).isoformat()
-    try:
-        portfolio = await get_portfolio()
-        async with AsyncSessionLocal() as db:
-            await save_portfolio_snapshot(db, portfolio)
-        print(f"[{now}] Portfolio snapshot saved — ${portfolio['total_value']:,.2f}")
-    except Exception as e:
-        print(f"[{now}] Snapshot failed: {e}")
+def _make_snapshot_job(market_code: str):
+    async def _job():
+        from backend.broker.paper_broker import get_portfolio
+        from backend.db.session import AsyncSessionLocal
+        from backend.db.crud import save_portfolio_snapshot
+        from backend.markets import is_market_open
+        tz  = pytz.timezone(MARKETS[market_code]["timezone"])
+        now = datetime.now(tz).isoformat()
+        if not is_market_open(market_code):
+            return
+        try:
+            portfolio = await get_portfolio(market_code)
+            async with AsyncSessionLocal() as db:
+                await save_portfolio_snapshot(db, portfolio, market_code)
+            print(f"[{now}] [{market_code}] Snapshot saved — {portfolio['total_value']:,.2f}")
+        except Exception as e:
+            print(f"[{now}] [{market_code}] Snapshot failed: {e}")
+    _job.__name__ = f"_snapshot_job_{market_code}"
+    return _job
 
 
 def start_scheduler():
-    # 3 committee sessions per trading day (Mon–Fri):
-    #   10:00 AM ET  — morning after open settles
-    #   12:30 PM ET  — midday check
-    #    3:00 PM ET  — power-hour before close
-    for hour, minute in [(10, 0), (12, 30), (15, 0)]:
+    for mkt_code, sessions in _MARKET_SESSIONS.items():
+        tz = pytz.timezone(MARKETS[mkt_code]["timezone"])
+        job_fn = _make_committee_job(mkt_code)
+
+        for idx, (hour, minute) in enumerate(sessions):
+            scheduler.add_job(
+                job_fn,
+                trigger=CronTrigger(
+                    day_of_week="mon-fri",
+                    hour=hour,
+                    minute=minute,
+                    timezone=tz,
+                ),
+                id=f"committee_{mkt_code}_{idx}",
+                replace_existing=True,
+            )
+
+        # Snapshot every 30 min during trading hours
+        open_h  = MARKETS[mkt_code]["open"].hour
+        close_h = MARKETS[mkt_code]["close"].hour
+        snap_fn = _make_snapshot_job(mkt_code)
         scheduler.add_job(
-            _committee_job,
-            trigger=CronTrigger(day_of_week="mon-fri", hour=hour, minute=minute, timezone=ET),
-            id=f"committee_{hour:02d}{minute:02d}",
+            snap_fn,
+            trigger=CronTrigger(
+                day_of_week="mon-fri",
+                hour=f"{open_h}-{close_h}",
+                minute="*/30",
+                timezone=tz,
+            ),
+            id=f"snapshot_{mkt_code}",
             replace_existing=True,
         )
 
-    # Portfolio snapshot every 30 min during market hours
-    scheduler.add_job(
-        _snapshot_job,
-        trigger=CronTrigger(day_of_week="mon-fri", hour="9-16", minute="*/30", timezone=ET),
-        id="portfolio_snapshot",
-        replace_existing=True,
-    )
-
     scheduler.start()
-    print("Scheduler started — committee at 10:00am / 12:30pm / 3:00pm ET (Mon–Fri)")
+    markets_str = ", ".join(
+        f"{c}({', '.join(f'{h:02d}:{m:02d}' for h, m in s)})"
+        for c, s in _MARKET_SESSIONS.items()
+    )
+    print(f"Scheduler started — sessions: {markets_str}")

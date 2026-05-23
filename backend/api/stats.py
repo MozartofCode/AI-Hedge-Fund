@@ -1,11 +1,14 @@
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
 
 from backend.db.session import get_db
-from backend.db.crud import get_session_count, get_trade_count, get_all_portfolio_snapshots, compute_win_rate
+from backend.db.crud import (
+    get_session_count, get_trade_count,
+    get_all_portfolio_snapshots, compute_win_rate,
+)
 from backend.broker.paper_broker import get_portfolio
 
 router = APIRouter()
@@ -53,18 +56,20 @@ def _equity_curve(snapshots: list) -> list:
 
 
 @router.get("/stats")
-async def stats(db: AsyncSession = Depends(get_db)):
+async def stats(market: str = Query('US'), db: AsyncSession = Depends(get_db)):
+    mkt = market.upper()
+
     # Live portfolio
     total_value = cash = 0.0
     try:
-        port = await get_portfolio()
+        port = await get_portfolio(mkt)
         total_value = port["total_value"]
         cash = port["cash"]
     except Exception:
         pass
 
-    # Equity history from our snapshots table
-    snapshots = await get_all_portfolio_snapshots(db)
+    # Equity history from snapshots table
+    snapshots = await get_all_portfolio_snapshots(db, mkt)
 
     first_value = float(snapshots[0].total_value) if snapshots else None
     total_pl_usd = round(total_value - first_value, 2) if first_value else None
@@ -77,14 +82,12 @@ async def stats(db: AsyncSession = Depends(get_db)):
     sharpe = _sharpe(snapshots)
     daily_equity = _equity_curve(snapshots)
 
-    # Win rate from our own trades table (FIFO matching)
-    win_rate = await compute_win_rate(db)
-
-    # DB counts
-    total_sessions = await get_session_count(db)
-    total_trades = await get_trade_count(db)
+    win_rate = await compute_win_rate(db, mkt)
+    total_sessions = await get_session_count(db, mkt)
+    total_trades = await get_trade_count(db, mkt)
 
     return {
+        "market": mkt,
         "total_value": total_value,
         "cash": cash,
         "total_pl_usd": total_pl_usd,

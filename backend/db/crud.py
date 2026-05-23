@@ -9,13 +9,11 @@ from backend.db.models import (
     PaperPortfolio, PaperPosition,
 )
 
-STARTING_CASH = 1_000_000.0
-
 
 # ── Committee Sessions ────────────────────────────────────────────────────────
 
-async def create_session(db: AsyncSession, ticker: str) -> CommitteeSession:
-    session = CommitteeSession(ticker=ticker)
+async def create_session(db: AsyncSession, ticker: str, market: str = 'US') -> CommitteeSession:
+    session = CommitteeSession(ticker=ticker, market=market.upper())
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -50,10 +48,13 @@ async def finalize_session(db: AsyncSession, session_id: uuid.UUID, decision: di
     return session
 
 
-async def log_trade(db: AsyncSession, session_id: uuid.UUID, trade_data: dict) -> Trade:
+async def log_trade(
+    db: AsyncSession, session_id: uuid.UUID, trade_data: dict, market: str = 'US'
+) -> Trade:
     trade = Trade(
         session_id=session_id,
         ticker=trade_data["ticker"],
+        market=market.upper(),
         side=trade_data["side"],
         qty=trade_data.get("qty", 0),
         filled_price=trade_data.get("filled_price"),
@@ -66,8 +67,11 @@ async def log_trade(db: AsyncSession, session_id: uuid.UUID, trade_data: dict) -
     return trade
 
 
-async def save_portfolio_snapshot(db: AsyncSession, snapshot_data: dict) -> PortfolioSnapshot:
+async def save_portfolio_snapshot(
+    db: AsyncSession, snapshot_data: dict, market: str = 'US'
+) -> PortfolioSnapshot:
     snapshot = PortfolioSnapshot(
+        market=market.upper(),
         total_value=snapshot_data["total_value"],
         cash=snapshot_data["cash"],
         positions=snapshot_data["positions"],
@@ -87,21 +91,29 @@ async def get_session_by_id(db: AsyncSession, session_id: uuid.UUID):
     return result.scalar_one_or_none()
 
 
-async def get_latest_session_for_ticker(db: AsyncSession, ticker: str):
+async def get_latest_session_for_ticker(
+    db: AsyncSession, ticker: str, market: str = 'US'
+):
     result = await db.execute(
         select(CommitteeSession)
         .options(selectinload(CommitteeSession.agent_votes))
-        .where(CommitteeSession.ticker == ticker.upper())
+        .where(
+            CommitteeSession.ticker == ticker.upper(),
+            CommitteeSession.market == market.upper(),
+        )
         .order_by(desc(CommitteeSession.session_timestamp))
         .limit(1)
     )
     return result.scalar_one_or_none()
 
 
-async def get_recent_sessions(db: AsyncSession, limit: int = 20, offset: int = 0):
+async def get_recent_sessions(
+    db: AsyncSession, limit: int = 20, offset: int = 0, market: str = 'US'
+):
     result = await db.execute(
         select(CommitteeSession)
         .options(selectinload(CommitteeSession.agent_votes))
+        .where(CommitteeSession.market == market.upper())
         .order_by(desc(CommitteeSession.session_timestamp))
         .offset(offset)
         .limit(limit)
@@ -109,9 +121,12 @@ async def get_recent_sessions(db: AsyncSession, limit: int = 20, offset: int = 0
     return result.scalars().all()
 
 
-async def get_recent_trades(db: AsyncSession, limit: int = 20, offset: int = 0):
+async def get_recent_trades(
+    db: AsyncSession, limit: int = 20, offset: int = 0, market: str = 'US'
+):
     result = await db.execute(
         select(Trade)
+        .where(Trade.market == market.upper())
         .order_by(desc(Trade.filled_at), desc(Trade.id))
         .offset(offset)
         .limit(limit)
@@ -119,42 +134,56 @@ async def get_recent_trades(db: AsyncSession, limit: int = 20, offset: int = 0):
     return result.scalars().all()
 
 
-async def get_session_count(db: AsyncSession) -> int:
-    result = await db.execute(select(func.count()).select_from(CommitteeSession))
+async def get_session_count(db: AsyncSession, market: str = 'US') -> int:
+    result = await db.execute(
+        select(func.count())
+        .select_from(CommitteeSession)
+        .where(CommitteeSession.market == market.upper())
+    )
     return result.scalar() or 0
 
 
-async def get_trade_count(db: AsyncSession) -> int:
-    result = await db.execute(select(func.count()).select_from(Trade))
+async def get_trade_count(db: AsyncSession, market: str = 'US') -> int:
+    result = await db.execute(
+        select(func.count())
+        .select_from(Trade)
+        .where(Trade.market == market.upper())
+    )
     return result.scalar() or 0
 
 
-async def get_latest_portfolio_snapshot(db: AsyncSession):
+async def get_latest_portfolio_snapshot(db: AsyncSession, market: str = 'US'):
     result = await db.execute(
         select(PortfolioSnapshot)
+        .where(PortfolioSnapshot.market == market.upper())
         .order_by(desc(PortfolioSnapshot.snapshot_timestamp))
         .limit(1)
     )
     return result.scalar_one_or_none()
 
 
-async def get_peak_portfolio_value(db: AsyncSession) -> float:
-    result = await db.execute(select(func.max(PortfolioSnapshot.total_value)))
+async def get_peak_portfolio_value(db: AsyncSession, market: str = 'US') -> float:
+    result = await db.execute(
+        select(func.max(PortfolioSnapshot.total_value))
+        .where(PortfolioSnapshot.market == market.upper())
+    )
     return result.scalar() or 0.0
 
 
-async def get_all_portfolio_snapshots(db: AsyncSession) -> list:
+async def get_all_portfolio_snapshots(db: AsyncSession, market: str = 'US') -> list:
     result = await db.execute(
-        select(PortfolioSnapshot).order_by(PortfolioSnapshot.snapshot_timestamp)
+        select(PortfolioSnapshot)
+        .where(PortfolioSnapshot.market == market.upper())
+        .order_by(PortfolioSnapshot.snapshot_timestamp)
     )
     return result.scalars().all()
 
 
-async def compute_win_rate(db: AsyncSession) -> Optional[float]:
-    """FIFO-match buy/sell pairs from our own trades table."""
+async def compute_win_rate(db: AsyncSession, market: str = 'US') -> Optional[float]:
+    """FIFO-match buy/sell pairs from our own trades table for a given market."""
     result = await db.execute(
         select(Trade)
-        .where(Trade.filled_price.isnot(None))
+        .where(Trade.market == market.upper(), Trade.filled_price.isnot(None))
         .order_by(Trade.filled_at)
     )
     all_trades = result.scalars().all()
@@ -179,60 +208,82 @@ async def compute_win_rate(db: AsyncSession) -> Optional[float]:
 
 # ── Paper Trading ─────────────────────────────────────────────────────────────
 
-async def get_paper_portfolio(db: AsyncSession) -> Optional[PaperPortfolio]:
-    result = await db.execute(select(PaperPortfolio).where(PaperPortfolio.id == 1))
+async def get_paper_portfolio(
+    db: AsyncSession, market: str = 'US'
+) -> Optional[PaperPortfolio]:
+    result = await db.execute(
+        select(PaperPortfolio).where(PaperPortfolio.market_code == market.upper())
+    )
     return result.scalar_one_or_none()
 
 
-async def init_paper_portfolio(db: AsyncSession) -> PaperPortfolio:
-    # Idempotent: only seed the $1M row if it doesn't exist yet.
-    existing = await get_paper_portfolio(db)
+async def init_paper_portfolio(
+    db: AsyncSession, market: str = 'US', starting_cash: float = 1_000_000.0
+) -> PaperPortfolio:
+    """Idempotent: only seed the row if it doesn't exist yet for this market."""
+    existing = await get_paper_portfolio(db, market)
     if existing is not None:
         return existing
-    portfolio = PaperPortfolio(id=1, cash=STARTING_CASH)
+    portfolio = PaperPortfolio(market_code=market.upper(), cash=starting_cash)
     db.add(portfolio)
     await db.commit()
     await db.refresh(portfolio)
     return portfolio
 
 
-async def update_paper_cash(db: AsyncSession, new_cash: float) -> None:
-    portfolio = await get_paper_portfolio(db)
+async def update_paper_cash(
+    db: AsyncSession, new_cash: float, market: str = 'US'
+) -> None:
+    portfolio = await get_paper_portfolio(db, market)
     if portfolio is None:
-        db.add(PaperPortfolio(id=1, cash=new_cash))
+        db.add(PaperPortfolio(market_code=market.upper(), cash=new_cash))
     else:
         portfolio.cash = round(new_cash, 2)
         portfolio.updated_at = datetime.utcnow()
     await db.commit()
 
 
-async def get_paper_positions(db: AsyncSession) -> list:
-    result = await db.execute(select(PaperPosition))
+async def get_paper_positions(db: AsyncSession, market: str = 'US') -> list:
+    result = await db.execute(
+        select(PaperPosition).where(PaperPosition.market == market.upper())
+    )
     return result.scalars().all()
 
 
-async def get_paper_position(db: AsyncSession, ticker: str) -> Optional[PaperPosition]:
+async def get_paper_position(
+    db: AsyncSession, ticker: str, market: str = 'US'
+) -> Optional[PaperPosition]:
     result = await db.execute(
-        select(PaperPosition).where(PaperPosition.ticker == ticker)
+        select(PaperPosition).where(
+            PaperPosition.ticker == ticker,
+            PaperPosition.market == market.upper(),
+        )
     )
     return result.scalar_one_or_none()
 
 
 async def upsert_paper_position(
-    db: AsyncSession, ticker: str, qty: float, avg_cost: float
+    db: AsyncSession, ticker: str, qty: float, avg_cost: float, market: str = 'US'
 ) -> None:
-    existing = await get_paper_position(db, ticker)
+    existing = await get_paper_position(db, ticker, market)
     if existing:
         existing.qty = round(qty, 6)
         existing.avg_cost = round(avg_cost, 4)
         existing.updated_at = datetime.utcnow()
     else:
-        db.add(PaperPosition(ticker=ticker, qty=round(qty, 6), avg_cost=round(avg_cost, 4)))
+        db.add(PaperPosition(
+            ticker=ticker,
+            market=market.upper(),
+            qty=round(qty, 6),
+            avg_cost=round(avg_cost, 4),
+        ))
     await db.commit()
 
 
-async def delete_paper_position(db: AsyncSession, ticker: str) -> None:
-    existing = await get_paper_position(db, ticker)
+async def delete_paper_position(
+    db: AsyncSession, ticker: str, market: str = 'US'
+) -> None:
+    existing = await get_paper_position(db, ticker, market)
     if existing:
         await db.delete(existing)
         await db.commit()

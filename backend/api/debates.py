@@ -1,6 +1,6 @@
 import math
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import get_db
 from backend.db.crud import (
@@ -57,25 +57,24 @@ def _compute_factor_grades(agent_votes) -> dict:
     news_raw  = raw.get("newshound",      {})
     macro_raw = raw.get("macro_watcher",  {})
 
-    # Sub-scores from prompts (new sessions) or fall back to action_score (legacy)
-    momentum     = tech_raw.get("momentum_score")
+    momentum = tech_raw.get("momentum_score")
     if momentum is None:
         momentum = _action_score(tech_raw)
 
-    valuation    = fund_raw.get("valuation_score")
+    valuation = fund_raw.get("valuation_score")
     if valuation is None:
         valuation = _action_score(fund_raw)
 
-    growth_fund  = fund_raw.get("growth_score")
+    growth_fund = fund_raw.get("growth_score")
     if growth_fund is None:
         growth_fund = _action_score(fund_raw)
-    growth = growth_fund * 0.65 + _action_score(macro_raw) * 0.35   # company + macro regime
+    growth = growth_fund * 0.65 + _action_score(macro_raw) * 0.35
 
     profitability = fund_raw.get("profitability_score")
     if profitability is None:
         profitability = _action_score(fund_raw)
 
-    revisions    = news_raw.get("revisions_score")
+    revisions = news_raw.get("revisions_score")
     if revisions is None:
         revisions = _action_score(news_raw)
 
@@ -95,6 +94,7 @@ def _serialize_session(s) -> dict:
     return {
         "id":                  str(s.id),
         "ticker":              s.ticker,
+        "market":              getattr(s, 'market', 'US'),
         "session_timestamp":   s.session_timestamp.isoformat(),
         "decision":            s.decision,
         "chairman_rationale":  s.chairman_rationale,
@@ -129,19 +129,30 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/latest-session/{ticker}")
-async def get_latest_session(ticker: str, db: AsyncSession = Depends(get_db)):
-    s = await get_latest_session_for_ticker(db, ticker)
+async def get_latest_session(
+    ticker: str,
+    market: str = Query('US'),
+    db: AsyncSession = Depends(get_db),
+):
+    s = await get_latest_session_for_ticker(db, ticker, market.upper())
     if s is None:
-        raise HTTPException(status_code=404, detail=f"No session found for {ticker.upper()}")
+        raise HTTPException(status_code=404, detail=f"No session found for {ticker.upper()} in {market.upper()}")
     return _serialize_session(s)
 
 
 @router.get("/debates")
-async def debates(page: int = 1, limit: int = 20, db: AsyncSession = Depends(get_db)):
+async def debates(
+    page: int = 1,
+    limit: int = 20,
+    market: str = Query('US'),
+    db: AsyncSession = Depends(get_db),
+):
+    mkt      = market.upper()
     offset   = (page - 1) * limit
-    sessions = await get_recent_sessions(db, limit=limit, offset=offset)
-    total    = await get_session_count(db)
+    sessions = await get_recent_sessions(db, limit=limit, offset=offset, market=mkt)
+    total    = await get_session_count(db, mkt)
     return {
+        "market": mkt,
         "items": [
             {
                 **_serialize_session(s),

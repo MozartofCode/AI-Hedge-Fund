@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import get_db
 from backend.db.crud import get_latest_portfolio_snapshot
@@ -8,9 +8,10 @@ router = APIRouter()
 
 
 @router.get("/portfolio")
-async def portfolio(db: AsyncSession = Depends(get_db)):
+async def portfolio(market: str = Query('US'), db: AsyncSession = Depends(get_db)):
+    mkt = market.upper()
     try:
-        live = await get_portfolio()
+        live = await get_portfolio(mkt)
         positions = live.get("positions", [])
         total_unrealized_pl = round(sum(p.get("unrealized_pl", 0) for p in positions), 2)
         invested = live["total_value"] - live["cash"]
@@ -25,11 +26,12 @@ async def portfolio(db: AsyncSession = Depends(get_db)):
             "position_count": len(positions),
         }
     except Exception as e:
-        snapshot = await get_latest_portfolio_snapshot(db)
+        snapshot = await get_latest_portfolio_snapshot(db, mkt)
         if snapshot:
             positions = snapshot.positions or []
             return {
                 "source": "snapshot",
+                "market": mkt,
                 "total_value": snapshot.total_value,
                 "cash": snapshot.cash,
                 "positions": positions,
@@ -37,4 +39,4 @@ async def portfolio(db: AsyncSession = Depends(get_db)):
                 "total_unrealized_pl": None,
                 "total_unrealized_pl_pct": None,
             }
-        return {"error": str(e)}
+        return {"error": str(e), "market": mkt}

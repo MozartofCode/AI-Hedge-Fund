@@ -4,33 +4,14 @@ from datetime import datetime
 
 from backend.agents.base_agent import call_claude
 from backend.agents import technician, fundamentalist, newshound, macro_watcher, risk_manager
-from backend.broker.paper_broker import get_portfolio, is_market_open, place_order
+from backend.broker.paper_broker import get_portfolio, place_order
 from backend.db.session import AsyncSessionLocal
 from backend.db.crud import (
     create_session, save_agent_vote, finalize_session,
     log_trade, save_portfolio_snapshot, get_peak_portfolio_value,
 )
+from backend.markets import MARKETS, is_market_open
 from backend.notifications.slack_notifier import notify_trade
-
-# ── 25-ticker watchlist: mega-caps + high-growth 10X candidates ───────────────
-WATCHLIST = [
-    # Mega-cap tech & AI
-    "AAPL", "NVDA", "MSFT", "GOOGL",
-    # AI infrastructure & semis
-    "AMD", "ARM", "AVGO", "SMCI",
-    # Cloud / cybersecurity / software (real 10X candidates)
-    "META", "PLTR", "CRWD", "NET", "DDOG",
-    # Consumer & EV
-    "AMZN", "TSLA",
-    # Financials & fintech (includes crypto proxy)
-    "JPM", "GS", "HOOD", "SOFI", "MSTR",
-    # Healthcare
-    "UNH", "LLY",
-    # Energy
-    "XOM",
-    # Market ETFs (broad regime signals)
-    "SPY", "QQQ",
-]
 
 # ── Base agent weights (regime-adjusted in _get_weights) ─────────────────────
 _BASE_WEIGHTS = {
@@ -94,8 +75,7 @@ def _action_score(action: str, confidence: float) -> float:
     Map an agent's action + confidence to a 0–1 bullish score.
     BUY confidence 1.0 = fully bullish (1.0).
     SELL confidence 1.0 = fully bearish (0.0).
-    HOLD = genuinely neutral (0.5) regardless of confidence — agents are
-    instructed to use SELL/BUY with low confidence rather than HOLD when biased.
+    HOLD = genuinely neutral (0.5) regardless of confidence.
     """
     if action == "BUY":
         return confidence
@@ -115,13 +95,15 @@ def _weighted_score(votes: list, weights: dict) -> float:
 
 
 def _conviction_position_size(score: float) -> float:
-    """Scale position size with conviction: 5% at threshold → 10% at perfect score."""
+    """Scale position size with conviction: 5% at threshold → 12% at perfect score."""
     conviction = (score - BUY_THRESHOLD) / (1.0 - BUY_THRESHOLD)
     size = _BASE_POSITION_PCT + conviction * (_MAX_POSITION_PCT - _BASE_POSITION_PCT)
     return round(min(_MAX_POSITION_PCT, max(_BASE_POSITION_PCT, size)), 1)
 
 
-async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: float) -> dict:
+async def run_committee_for_ticker(
+    ticker: str, portfolio: dict, peak_value: float, market: str = 'US'
+) -> dict:
     # Run 4 data agents in parallel
     tech_vote, fund_vote, news_vote, macro_vote = await asyncio.gather(
         asyncio.to_thread(technician.get_vote, ticker),
@@ -164,6 +146,7 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
     # ── Chairman rationale via Claude ─────────────────────────────────────────
     chairman_input = {
         "ticker":             ticker,
+        "market":             market.upper(),
         "weighted_score":     score,
         "risk_off":           risk_off,
         "spy_above_200d":     spy_above_200d,
@@ -208,7 +191,7 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
 
     # ── Persist to DB ─────────────────────────────────────────────────────────
     async with AsyncSessionLocal() as db:
-        session = await create_session(db, ticker)
+        session = await create_session(db, ticker, market)
 
         for vote in agent_votes:
             await save_agent_vote(db, session.id, {
@@ -228,9 +211,11 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
 
         order_placed = False
         order_id     = None
-        if is_market_open() and final_decision in ("BUY", "SELL") and final_size > 0:
+        market_cfg   = MARKETS.get(market.upper(), MARKETS["US"])
+
+        if is_market_open(market) and final_decision in ("BUY", "SELL") and final_size > 0:
             try:
-                order        = await place_order(ticker, final_decision.lower(), final_size)
+                order        = await place_order(ticker, final_decision.lower(), final_size, market)
                 order_placed = True
                 order_id     = order.get("order_id")
                 await log_trade(db, session.id, {
@@ -240,21 +225,24 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
                     "filled_price": order.get("price"),
                     "filled_at":    datetime.utcnow(),
                     "order_id":     order_id,
-                })
-                _votes_for_slack = [
-                    {"agent_name": v.get("agent"), "action": v.get("action", "HOLD"),
-                     "confidence": v.get("confidence", 0.0), "veto": False}
-                    for v in agent_votes
-                ] + [{
-                    "agent_name": "risk_manager", "action": "HOLD",
-                    "confidence": 0.0, "veto": risk_vote.get("veto", False),
-                }]
-                await notify_trade(
-                    ticker=ticker, side=final_decision.lower(),
-                    qty=order.get("qty", 0), price=order.get("price", 0.0),
-                    chairman_rationale=rationale, agent_votes=_votes_for_slack,
-                    weighted_score=score,
-                )
+                }, market)
+
+                # Slack only for US market (or markets with slack_notify=True)
+                if market_cfg.get("slack_notify", False):
+                    _votes_for_slack = [
+                        {"agent_name": v.get("agent"), "action": v.get("action", "HOLD"),
+                         "confidence": v.get("confidence", 0.0), "veto": False}
+                        for v in agent_votes
+                    ] + [{
+                        "agent_name": "risk_manager", "action": "HOLD",
+                        "confidence": 0.0, "veto": risk_vote.get("veto", False),
+                    }]
+                    await notify_trade(
+                        ticker=ticker, side=final_decision.lower(),
+                        qty=order.get("qty", 0), price=order.get("price", 0.0),
+                        chairman_rationale=rationale, agent_votes=_votes_for_slack,
+                        weighted_score=score,
+                    )
             except Exception as e:
                 rationale += f" [Order failed: {e}]"
 
@@ -268,6 +256,7 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
 
     return {
         "ticker":              ticker,
+        "market":              market.upper(),
         "decision":            final_decision,
         "weighted_score":      score,
         "chairman_rationale":  rationale,
@@ -279,14 +268,14 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
     }
 
 
-async def analyze_ticker(ticker: str) -> dict:
+async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
     """
     Run all 5 agents + Chairman for a single ticker.
     Analysis-only — no order placed, works when market is closed.
     """
-    portfolio = await get_portfolio()
+    portfolio = await get_portfolio(market)
     async with AsyncSessionLocal() as db:
-        peak_value = await get_peak_portfolio_value(db)
+        peak_value = await get_peak_portfolio_value(db, market)
 
     tech_vote, fund_vote, news_vote, macro_vote = await asyncio.gather(
         asyncio.to_thread(technician.get_vote, ticker),
@@ -325,6 +314,7 @@ async def analyze_ticker(ticker: str) -> dict:
 
     chairman_input = {
         "ticker":              ticker,
+        "market":              market.upper(),
         "weighted_score":      score,
         "risk_off":            risk_off,
         "spy_above_200d":      spy_above_200d,
@@ -361,6 +351,7 @@ async def analyze_ticker(ticker: str) -> dict:
 
     return {
         "ticker":            ticker,
+        "market":            market.upper(),
         "decision":          final_decision,
         "weighted_score":    round(score, 4),
         "chairman_rationale": chairman_out.get("chairman_rationale", "No rationale provided."),
@@ -381,42 +372,44 @@ async def analyze_ticker(ticker: str) -> dict:
             }
             for v in [
                 *agent_votes,
-                {**risk_vote, "agent": "risk_manager", "action": "SELL" if (force_sell or take_profit) else "HOLD",
+                {**risk_vote, "agent": "risk_manager",
+                 "action": "SELL" if (force_sell or take_profit) else "HOLD",
                  "rationale": risk_vote.get("reason", "")},
             ]
         ],
     }
 
 
-async def run_full_committee(watchlist: list = None) -> list:
-    if not is_market_open():
-        print("Market is closed — skipping committee session")
+async def run_full_committee(market: str = 'US') -> list:
+    if not is_market_open(market):
+        print(f"[{market}] Market is closed — skipping committee session")
         return []
 
-    tickers = watchlist or WATCHLIST
+    market_cfg = MARKETS.get(market.upper(), MARKETS["US"])
+    tickers    = market_cfg["watchlist"]
 
     try:
-        portfolio = await get_portfolio()
+        portfolio = await get_portfolio(market)
         async with AsyncSessionLocal() as db:
-            await save_portfolio_snapshot(db, portfolio)
-            peak_value = await get_peak_portfolio_value(db)
+            await save_portfolio_snapshot(db, portfolio, market)
+            peak_value = await get_peak_portfolio_value(db, market)
     except Exception as e:
-        print(f"Portfolio fetch failed: {e}")
+        print(f"[{market}] Portfolio fetch failed: {e}")
         portfolio  = {"total_value": 0, "cash": 0, "positions": []}
         peak_value = 0.0
 
     results = []
     for ticker in tickers:
         try:
-            result = await run_committee_for_ticker(ticker, portfolio, peak_value)
+            result = await run_committee_for_ticker(ticker, portfolio, peak_value, market)
             results.append(result)
             flags = []
             if result.get("force_sell"):   flags.append("STOP-LOSS")
             if result.get("take_profit"):  flags.append("TAKE-PROFIT")
             if result.get("risk_off"):     flags.append("RISK-OFF")
             flag_str = f" [{', '.join(flags)}]" if flags else ""
-            print(f"[{ticker}] {result['decision']} | score={result['weighted_score']:.2f} | order={result['order_placed']}{flag_str}")
+            print(f"[{market}][{ticker}] {result['decision']} | score={result['weighted_score']:.2f} | order={result['order_placed']}{flag_str}")
         except Exception as e:
-            print(f"[{ticker}] Session failed: {e}")
+            print(f"[{market}][{ticker}] Session failed: {e}")
 
     return results
