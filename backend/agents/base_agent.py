@@ -24,11 +24,11 @@ Return ONLY a valid JSON object with no markdown, no explanation — just the JS
 }"""
 
 
-def call_claude(system_prompt: str, user_prompt: str, agent_name: str) -> dict:
+def call_claude(system_prompt: str, user_prompt: str, agent_name: str, max_tokens: int = 500) -> dict:
     try:
         message = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=500,
+            max_tokens=max_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
