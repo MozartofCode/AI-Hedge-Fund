@@ -46,3 +46,9 @@ def get_analyst_ratings(ticker: str) -> dict:
 def get_earnings_calendar(ticker: str) -> list:
     data = _get(f"historical/earning_calendar/{ticker}", {"limit": 4})
     return data if isinstance(data, list) else []
+
+
+def get_analyst_price_target(ticker: str) -> dict:
+    """Consensus analyst price target (high / low / consensus / median)."""
+    data = _get("price-target-consensus", {"symbol": ticker})
+    return data[0] if isinstance(data, list) and data else {}

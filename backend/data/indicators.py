@@ -79,3 +79,45 @@ def calc_volume_ratio(volumes: pd.Series, period: int = 20):
     if avg <= 0:
         return None
     return round(float(curr / avg), 2)
+
+
+def calc_adx(hist: pd.DataFrame, period: int = 14):
+    """
+    Average Directional Index — trend strength (not direction).
+    >25 = trending market (signals reliable), <20 = choppy (signals noisy).
+    """
+    if len(hist) < period * 2 + 1:
+        return None
+    high  = hist["High"]
+    low   = hist["Low"]
+    close = hist["Close"]
+
+    tr = pd.concat([
+        high - low,
+        (high - close.shift()).abs(),
+        (low  - close.shift()).abs(),
+    ], axis=1).max(axis=1)
+
+    up_move   = high.diff()
+    down_move = -low.diff()
+    plus_dm   = up_move.where(  (up_move > down_move) & (up_move > 0),   0.0)
+    minus_dm  = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+    alpha    = 1.0 / period
+    atr_w    = tr.ewm(       alpha=alpha, adjust=False).mean()
+    plus_di  = 100 * plus_dm.ewm( alpha=alpha, adjust=False).mean() / atr_w
+    minus_di = 100 * minus_dm.ewm(alpha=alpha, adjust=False).mean() / atr_w
+
+    denom = (plus_di + minus_di).replace(0, float("nan"))
+    dx    = 100 * (plus_di - minus_di).abs() / denom
+    adx   = dx.ewm(alpha=alpha, adjust=False).mean().iloc[-1]
+    return round(float(adx), 2) if not pd.isna(adx) else None
+
+
+def calc_roc(closes: pd.Series, period: int = 20):
+    """Rate of Change — % price change over N periods. Positive = upward momentum."""
+    if len(closes) < period + 1:
+        return None
+    base = closes.iloc[-(period + 1)]
+    roc  = (closes.iloc[-1] - base) / base * 100
+    return round(float(roc), 2) if not pd.isna(roc) else None
