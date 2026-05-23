@@ -2,6 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
@@ -36,10 +37,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AlphaCommittee API", version="0.3.0", lifespan=lifespan)
 
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+# Build allowed-origins list: always include the env var (or localhost fallback)
+# plus the known Vercel deployment so CORS never breaks if the env var is missing.
+_KNOWN_ORIGINS = {
+    "https://ai-hedge-fund-liart.vercel.app",
+    os.getenv("FRONTEND_URL", "http://localhost:5173"),
+}
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url],
+    allow_origins=list(_KNOWN_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,20 +70,23 @@ async def health():
 @app.post("/api/run-committee")
 async def run_committee(ticker: str = None, market: str = Query('US')):
     """Manually trigger a full committee session or a single-ticker run."""
-    from backend.orchestrator import run_full_committee, run_committee_for_ticker
-    from backend.broker.paper_broker import get_portfolio
-    from backend.db.crud import get_peak_portfolio_value
+    try:
+        from backend.orchestrator import run_full_committee, run_committee_for_ticker
+        from backend.broker.paper_broker import get_portfolio
+        from backend.db.crud import get_peak_portfolio_value
 
-    mkt = market.upper()
-    if ticker:
-        portfolio_data = await get_portfolio(mkt)
-        async with AsyncSessionLocal() as db:
-            peak = await get_peak_portfolio_value(db, mkt)
-        result = await run_committee_for_ticker(ticker.upper(), portfolio_data, peak, mkt)
-        return result
+        mkt = market.upper()
+        if ticker:
+            portfolio_data = await get_portfolio(mkt)
+            async with AsyncSessionLocal() as db:
+                peak = await get_peak_portfolio_value(db, mkt)
+            result = await run_committee_for_ticker(ticker.upper(), portfolio_data, peak, mkt)
+            return result
 
-    results = await run_full_committee(mkt)
-    return {"market": mkt, "sessions": results, "count": len(results)}
+        results = await run_full_committee(mkt)
+        return {"market": mkt, "sessions": results, "count": len(results)}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.post("/api/analyze")
@@ -86,9 +95,12 @@ async def analyze(ticker: str, market: str = Query('US')):
     Run all 5 agents + Chairman for a single ticker.
     Analysis only — no order placed, works when market is closed.
     """
-    from backend.orchestrator import analyze_ticker
-    result = await analyze_ticker(ticker.upper().strip(), market.upper())
-    return result
+    try:
+        from backend.orchestrator import analyze_ticker
+        result = await analyze_ticker(ticker.upper().strip(), market.upper())
+        return result
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 @app.post("/api/test-e2e")
