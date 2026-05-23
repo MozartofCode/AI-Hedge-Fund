@@ -24,15 +24,16 @@ _TOTAL_WEIGHT = sum(_WEIGHTS.values())   # 0.80
 BUY_THRESHOLD = 0.60
 SELL_THRESHOLD = 0.35
 
-CHAIRMAN_SYSTEM = """You are the Chairman of an AI investment committee. You have received structured analysis from 5 specialized agents.
+CHAIRMAN_SYSTEM = """You are the Chairman of an AI investment committee. You have received structured analysis from 5 specialized agents, plus the current portfolio state.
 Weigh their arguments, respect the Risk Manager's constraints, and produce a final trade decision with a rationale that would satisfy a compliance officer.
+Consider available cash and existing positions when sizing: don't over-concentrate and don't exceed available cash.
 Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "decision": "BUY" | "SELL" | "HOLD",
   "ticker": "...",
   "position_size_pct": 0-10,
   "order_type": "market",
-  "chairman_rationale": "3-4 sentences covering key signals, risk constraints, and reasoning"
+  "chairman_rationale": "3-4 sentences covering key signals, risk constraints, portfolio context, and reasoning"
 }"""
 
 
@@ -95,6 +96,12 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
         "risk_manager_veto": risk_vote.get("veto"),
         "risk_manager_reason": risk_vote.get("reason"),
         "preliminary_decision": decision,
+        "portfolio_context": {
+            "cash_available":   round(portfolio.get("cash", 0), 2),
+            "total_value":      round(portfolio.get("total_value", 0), 2),
+            "open_positions":   [p["ticker"] for p in portfolio.get("positions", [])],
+            "num_positions":    len(portfolio.get("positions", [])),
+        },
         "agent_votes": [
             {"agent": v.get("agent"), "action": v.get("action"),
              "confidence": v.get("confidence"), "rationale": v.get("rationale")}
@@ -219,6 +226,12 @@ async def analyze_ticker(ticker: str) -> dict:
         "risk_manager_veto": risk_vote.get("veto"),
         "risk_manager_reason": risk_vote.get("reason"),
         "preliminary_decision": decision,
+        "portfolio_context": {
+            "cash_available":   round(portfolio.get("cash", 0), 2),
+            "total_value":      round(portfolio.get("total_value", 0), 2),
+            "open_positions":   [p["ticker"] for p in portfolio.get("positions", [])],
+            "num_positions":    len(portfolio.get("positions", [])),
+        },
         "agent_votes": [
             {"agent": v.get("agent"), "action": v.get("action"),
              "confidence": v.get("confidence"), "rationale": v.get("rationale")}

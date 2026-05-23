@@ -52,3 +52,30 @@ def calc_bbands(closes: pd.Series, period: int = 20, num_std: float = 2.0):
         return round(float(v), 4) if not pd.isna(v) else None
 
     return _r(upper), _r(mid), _r(lower)
+
+
+def calc_atr(hist: pd.DataFrame, period: int = 14):
+    """Average True Range — measures volatility independent of price level."""
+    if len(hist) < period + 1:
+        return None
+    high  = hist["High"]
+    low   = hist["Low"]
+    close = hist["Close"]
+    tr = pd.concat([
+        high - low,
+        (high - close.shift()).abs(),
+        (low  - close.shift()).abs(),
+    ], axis=1).max(axis=1)
+    atr = tr.rolling(period).mean().iloc[-1]
+    return round(float(atr), 4) if not pd.isna(atr) else None
+
+
+def calc_volume_ratio(volumes: pd.Series, period: int = 20):
+    """Current volume vs N-day average. >1.5 = notable spike, <0.5 = quiet."""
+    if len(volumes) < period + 1:
+        return None
+    avg  = volumes.rolling(period).mean().iloc[-1]
+    curr = volumes.iloc[-1]
+    if avg <= 0:
+        return None
+    return round(float(curr / avg), 2)
