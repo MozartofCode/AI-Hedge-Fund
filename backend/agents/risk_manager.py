@@ -1,14 +1,15 @@
-MAX_POSITIONS            = 7      # was 3 — deploy more capital
-MAX_SINGLE_POSITION_PCT  = 10.0
-MAX_DRAWDOWN_PCT         = 10.0   # portfolio-level drawdown guard
-MAX_SAME_SECTOR_POSITIONS = 2
-STOP_LOSS_PCT            = 8.0    # exit position if down 8% from entry
-PROFIT_TARGET_PCT        = 20.0   # take profits if up 20% from entry
-BASE_POSITION_PCT        = 5.0
-MAX_CONVICTION_PCT       = 10.0   # ceiling for high-conviction trades
+MAX_POSITIONS             = 10     # raised 7→10 — more room to hunt winners
+MAX_SINGLE_POSITION_PCT   = 12.0   # raised 10→12% for high-conviction plays
+MAX_DRAWDOWN_PCT          = 12.0   # slight breathing room
+MAX_SAME_SECTOR_POSITIONS = 3      # raised 2→3 — allow thematic concentration
+STOP_LOSS_PCT             = 8.0    # exit if down 8% from entry
+PROFIT_TARGET_PCT         = 75.0   # raised 20→75% — let winners RUN (don't kill 10X plays at +20%)
+BASE_POSITION_PCT         = 5.0
+MAX_CONVICTION_PCT        = 12.0   # ceiling for high-conviction trades
 
-# Sector map — covers expanded 15-ticker watchlist
+# Sector map — expanded 25-ticker watchlist
 _SECTOR_MAP = {
+    # Mega-cap tech / AI
     "AAPL":  "Technology",
     "NVDA":  "Technology",
     "MSFT":  "Technology",
@@ -16,13 +17,29 @@ _SECTOR_MAP = {
     "META":  "Technology",
     "AMD":   "Technology",
     "QQQ":   "Technology",
+    "ARM":   "Technology",
+    "AVGO":  "Technology",
+    "SMCI":  "Technology",
+    # Cloud / cybersecurity / software
+    "CRWD":  "Technology",
+    "NET":   "Technology",
+    "DDOG":  "Technology",
+    "PLTR":  "Technology",
+    # Consumer
     "AMZN":  "Consumer Discretionary",
     "TSLA":  "Consumer Discretionary",
+    # Financials / fintech
     "JPM":   "Financials",
     "GS":    "Financials",
+    "HOOD":  "Financials",
+    "SOFI":  "Financials",
+    "MSTR":  "Financials",
+    # Healthcare
     "UNH":   "Healthcare",
     "LLY":   "Healthcare",
+    # Energy
     "XOM":   "Energy",
+    # Broad market
     "SPY":   "Broad Market",
 }
 
@@ -33,6 +50,9 @@ def get_vote(ticker: str, portfolio: dict, peak_value: float = None) -> dict:
     Returns force_sell=True for stop-loss triggers.
     Returns take_profit=True for profit-target triggers.
     Returns veto=True to block BUYs.
+
+    NOTE: profit target is now 75% — we want to hold 10X candidates.
+    The committee's regular SELL votes handle normal exits.
     """
     try:
         total_value = portfolio.get("total_value", 0)
@@ -67,7 +87,7 @@ def get_vote(ticker: str, portfolio: dict, peak_value: float = None) -> dict:
                     "approved_position_size_pct": BASE_POSITION_PCT,
                     "reason": (
                         f"Stop loss triggered: {ticker} is down {pl_pct:.1f}% from entry. "
-                        f"Forced exit to limit losses (threshold: -{STOP_LOSS_PCT}%)."
+                        f"Forced exit (threshold: -{STOP_LOSS_PCT}%)."
                     ),
                     "portfolio_drawdown_pct": drawdown_pct,
                 }
@@ -79,7 +99,8 @@ def get_vote(ticker: str, portfolio: dict, peak_value: float = None) -> dict:
                     "approved_position_size_pct": BASE_POSITION_PCT,
                     "reason": (
                         f"Profit target reached: {ticker} is up {pl_pct:.1f}% from entry. "
-                        f"Taking profits (threshold: +{PROFIT_TARGET_PCT}%)."
+                        f"Taking profits (threshold: +{PROFIT_TARGET_PCT}%). "
+                        "For strong uptrends the committee may override this."
                     ),
                     "portfolio_drawdown_pct": drawdown_pct,
                 }

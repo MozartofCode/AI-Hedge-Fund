@@ -12,21 +12,23 @@ from backend.db.crud import (
 )
 from backend.notifications.slack_notifier import notify_trade
 
-# ── Expanded watchlist: 15 tickers across 6 sectors ──────────────────────────
+# ── 25-ticker watchlist: mega-caps + high-growth 10X candidates ───────────────
 WATCHLIST = [
-    # Mega-cap tech
+    # Mega-cap tech & AI
     "AAPL", "NVDA", "MSFT", "GOOGL",
-    # Growth tech
-    "META", "AMD",
-    # Consumer
+    # AI infrastructure & semis
+    "AMD", "ARM", "AVGO", "SMCI",
+    # Cloud / cybersecurity / software (real 10X candidates)
+    "META", "PLTR", "CRWD", "NET", "DDOG",
+    # Consumer & EV
     "AMZN", "TSLA",
-    # Financials
-    "JPM", "GS",
+    # Financials & fintech (includes crypto proxy)
+    "JPM", "GS", "HOOD", "SOFI", "MSTR",
     # Healthcare
     "UNH", "LLY",
     # Energy
     "XOM",
-    # Market ETFs
+    # Market ETFs (broad regime signals)
     "SPY", "QQQ",
 ]
 
@@ -44,19 +46,29 @@ SELL_THRESHOLD = 0.35
 
 # ── Conviction-based position sizing ─────────────────────────────────────────
 _BASE_POSITION_PCT = 5.0
-_MAX_POSITION_PCT  = 10.0
+_MAX_POSITION_PCT  = 12.0   # raised to 12% for highest-conviction plays
 
-CHAIRMAN_SYSTEM = """You are the Chairman of an AI investment committee. You have received structured analysis from 5 specialized agents, plus the current portfolio state and market regime.
-Weigh their arguments, respect the Risk Manager's constraints, and produce a final trade decision with a rationale that would satisfy a compliance officer.
-Consider available cash and existing positions when sizing: don't over-concentrate and don't exceed available cash.
-When force_sell or take_profit is true, the decision is already SELL — confirm it with a brief rationale.
+CHAIRMAN_SYSTEM = """You are the Chairman of an AI investment committee hunting for asymmetric returns and 10X opportunities.
+You have received analysis from 5 specialized agents covering technicals, fundamentals, news, macro, and risk.
+
+Your mandate: FIND AND BET BIG ON HIGH-CONVICTION OPPORTUNITIES. Don't manage a bond portfolio — this is growth capital.
+
+Decision framework:
+- Strong BUY signals (score >0.80 with inflection evidence) → BUY with larger size (8-12%). Don't be timid.
+- Revenue acceleration + margin expansion + Stage 2 uptrend = highest-priority BUY setup.
+- If FCF turned positive recently or EPS is accelerating, that is a major inflection — act on it.
+- Squeeze risk (high short interest + positive catalyst) = explosive move potential.
+- Take-profit at +75% is a safety ceiling — for confirmed growth compounders in Stage 2, consider HOLD.
+- Respect the Risk Manager's stop-loss and veto rules — protect capital.
+- SELL committee votes from multiple agents should be respected promptly.
+
 Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "decision": "BUY" | "SELL" | "HOLD",
   "ticker": "...",
-  "position_size_pct": 0-10,
+  "position_size_pct": 0-12,
   "order_type": "market",
-  "chairman_rationale": "3-4 sentences covering key signals, risk constraints, portfolio context, and reasoning"
+  "chairman_rationale": "3-4 sentences: what is the core thesis, what inflection/signal is being acted on, what could go wrong, and why the sizing is appropriate"
 }"""
 
 
