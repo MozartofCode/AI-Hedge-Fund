@@ -10,6 +10,7 @@ from backend.db.crud import (
     create_session, save_agent_vote, finalize_session,
     log_trade, save_portfolio_snapshot, get_peak_portfolio_value,
 )
+from backend.notifications.slack_notifier import notify_trade
 
 WATCHLIST = ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "META", "GOOGL", "JPM", "XOM", "SPY"]
 
@@ -160,6 +161,30 @@ async def run_committee_for_ticker(ticker: str, portfolio: dict, peak_value: flo
                     "filled_at": datetime.utcnow(),
                     "order_id": order_id,
                 })
+                # Build agent vote list for Slack notification (include risk manager)
+                _votes_for_slack = [
+                    {
+                        "agent_name": v.get("agent"),
+                        "action":     v.get("action", "HOLD"),
+                        "confidence": v.get("confidence", 0.0),
+                        "veto":       False,
+                    }
+                    for v in agent_votes
+                ] + [{
+                    "agent_name": "risk_manager",
+                    "action":     "HOLD",
+                    "confidence": 0.0,
+                    "veto":       risk_vote.get("veto", False),
+                }]
+                await notify_trade(
+                    ticker=ticker,
+                    side=final_decision.lower(),
+                    qty=order.get("qty", 0),
+                    price=order.get("price", 0.0),
+                    chairman_rationale=rationale,
+                    agent_votes=_votes_for_slack,
+                    weighted_score=score,
+                )
             except Exception as e:
                 rationale += f" [Order failed: {e}]"
 
