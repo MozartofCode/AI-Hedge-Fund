@@ -267,8 +267,7 @@ export default function Portfolio() {
 
       <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-white">Portfolio</h1>
+        <div className="flex items-center justify-end">
           <div className="flex items-center gap-3">
             {lastUpdated && (
               <span className="text-xs text-gray-600">Updated {ago}</span>
