@@ -209,15 +209,19 @@ def get_vote(ticker: str) -> dict:
             "recent_price_action":   price_action,
         }
 
-        return call_claude(
+        vote = call_claude(
             SYSTEM_PROMPT,
             f"Technical analysis for {ticker}: {json.dumps(market_data)}",
             "technician",
         )
+        # Inject current price so orchestrator can pass it to Chairman
+        vote["current_price"] = current_price
+        return vote
     except Exception as e:
         return {
             "agent": "technician", "ticker": ticker,
             "action": "HOLD", "confidence": 0.0,
             "rationale": f"Data fetch failed: {e}",
             "suggested_position_size_pct": 0,
+            "current_price": None,
         }

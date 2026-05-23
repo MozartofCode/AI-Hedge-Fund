@@ -39,8 +39,22 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
   "ticker": "...",
   "position_size_pct": 0-12,
   "order_type": "market",
-  "chairman_rationale": "Exactly 3 bullet lines, each starting with the emoji and label shown:\n• 📈 Why: [The single most compelling reason for this decision — specific and concrete]\n• ⚠️ Risk: [The biggest thing that could go wrong — be honest]\n• 👀 Watch: [The one metric, event, or signal to monitor going forward]"
+  "chairman_rationale": "Exactly 3 bullet lines, each starting with the emoji and label shown:\n• 📈 Why: [The single most compelling reason for this decision — specific and concrete]\n• ⚠️ Risk: [The biggest thing that could go wrong — be honest]\n• 👀 Watch: [The one metric, event, or signal to monitor going forward]",
+  "price_targets": {
+    "1m":  0.00,
+    "6m":  0.00,
+    "1y":  0.00
+  },
+  "stop_loss": 0.00
 }
+
+Price target rules (use the current_price provided in the input):
+- Base targets on realistic upside/downside given the fundamentals, momentum, and macro backdrop
+- BUY decision: 1m should reflect near-term momentum, 6m/1y should reflect thesis fully playing out
+- SELL decision: targets should show expected decline
+- HOLD: targets should reflect a tight range around current price
+- stop_loss: the price level where you'd cut the position (typically 8-12% below current for BUY)
+- All values must be actual dollar prices, not percentages
 
 Decision rules:
 - BUY if overall score > 0.60 and no risk veto
@@ -309,8 +323,11 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
         decision      = "HOLD"
         position_size = 0.0
 
+    current_price = tech_vote.get("current_price")
+
     chairman_input = {
         "ticker":              ticker,
+        "current_price":       current_price,
         "market":              market.upper(),
         "weighted_score":      score,
         "risk_off":            risk_off,
@@ -337,7 +354,7 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
         CHAIRMAN_SYSTEM,
         f"Committee analysis: {json.dumps(chairman_input)}",
         "chairman",
-        max_tokens=800,
+        max_tokens=1000,
     )
 
     final_decision = chairman_out.get("decision", decision)
@@ -352,6 +369,9 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
         "decision":          final_decision,
         "weighted_score":    round(score, 4),
         "chairman_rationale": chairman_out.get("chairman_rationale", "No rationale provided."),
+        "price_targets":     chairman_out.get("price_targets"),
+        "stop_loss":         chairman_out.get("stop_loss"),
+        "current_price":     current_price,
         "risk_off":          risk_off,
         "spy_above_200d":    spy_above_200d,
         "active_weights":    weights,

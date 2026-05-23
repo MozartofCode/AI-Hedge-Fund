@@ -346,7 +346,7 @@ function AnalysisResult({ result, onRerun }) {
 
         {/* Bullet rationale */}
         {hasStructured ? (
-          <ul className="space-y-2.5">
+          <ul className="space-y-2.5 mb-4">
             {bulletLines.map((line, i) => (
               <li key={i} className="flex items-start gap-2.5 text-sm text-gray-200 leading-snug">
                 <span className="flex-shrink-0 mt-0.5">{line.slice(0, 2)}</span>
@@ -355,7 +355,55 @@ function AnalysisResult({ result, onRerun }) {
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-gray-300 leading-relaxed">{rawRationale}</p>
+          <p className="text-sm text-gray-300 leading-relaxed mb-4">{rawRationale}</p>
+        )}
+
+        {/* Price targets */}
+        {result.price_targets && (
+          <div className="border-t border-white/10 pt-4">
+            <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Price Targets</div>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {[
+                { label: '1 Month',  key: '1m'  },
+                { label: '6 Months', key: '6m'  },
+                { label: '1 Year',   key: '1y'  },
+              ].map(({ label, key }) => {
+                const target = result.price_targets[key]
+                const current = result.current_price
+                const pct = (current && target)
+                  ? ((target - current) / current * 100)
+                  : null
+                const up = pct == null ? null : pct >= 0
+                return (
+                  <div key={key} className="bg-black/20 rounded-xl p-3 text-center">
+                    <div className="text-xs text-gray-500 mb-1">{label}</div>
+                    <div className="text-base font-bold text-white">
+                      {target ? `$${Number(target).toFixed(2)}` : '—'}
+                    </div>
+                    {pct != null && (
+                      <div className={`text-xs font-semibold mt-0.5 ${up ? 'text-green-400' : 'text-red-400'}`}>
+                        {up ? '+' : ''}{pct.toFixed(1)}%
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {result.stop_loss && result.current_price && (
+              <div className="flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl px-3.5 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-400 text-sm">🛑</span>
+                  <span className="text-xs font-medium text-red-300">Stop Loss</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-red-300">${Number(result.stop_loss).toFixed(2)}</span>
+                  <span className="text-xs text-red-400 ml-2">
+                    ({((result.stop_loss - result.current_price) / result.current_price * 100).toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
