@@ -2,7 +2,7 @@ import asyncio
 import json
 from datetime import datetime
 
-from backend.agents.base_agent import call_claude
+from backend.agents.base_agent import call_claude, CHAIRMAN_MODEL
 from backend.agents import technician, fundamentalist, newshound, macro_watcher, risk_manager
 from backend.broker.paper_broker import get_portfolio, place_order
 from backend.db.session import AsyncSessionLocal
@@ -184,6 +184,7 @@ async def run_committee_for_ticker(
         f"Committee analysis: {json.dumps(chairman_input)}",
         "chairman",
         max_tokens=800,
+        model=CHAIRMAN_MODEL,
     )
 
     final_decision = chairman_out.get("decision", decision)
@@ -355,6 +356,7 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
         f"Committee analysis: {json.dumps(chairman_input)}",
         "chairman",
         max_tokens=1000,
+        model=CHAIRMAN_MODEL,
     )
 
     final_decision = chairman_out.get("decision", decision)

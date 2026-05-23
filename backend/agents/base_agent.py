@@ -7,6 +7,11 @@ load_dotenv()
 
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+# Agents do simple JSON classification — Haiku is 12× cheaper and fast enough.
+# Chairman synthesises everything into prose — keep Sonnet for quality.
+AGENT_MODEL    = "claude-haiku-4-5-20251001"
+CHAIRMAN_MODEL = "claude-sonnet-4-6"
+
 _HOLD_FALLBACK = {
     "action": "HOLD",
     "confidence": 0.0,
@@ -24,10 +29,16 @@ Return ONLY a valid JSON object with no markdown, no explanation — just the JS
 }"""
 
 
-def call_claude(system_prompt: str, user_prompt: str, agent_name: str, max_tokens: int = 500) -> dict:
+def call_claude(
+    system_prompt: str,
+    user_prompt: str,
+    agent_name: str,
+    max_tokens: int = 150,
+    model: str = AGENT_MODEL,
+) -> dict:
     try:
         message = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=model,
             max_tokens=max_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],

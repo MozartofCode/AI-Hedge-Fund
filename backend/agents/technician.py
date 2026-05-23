@@ -4,9 +4,15 @@ Round 3 additions: ATR expansion ratio, volume conviction (up/down days),
 SMA200 slope, Stage 2 uptrend flag, volume trend (institutional accumulation proxy).
 """
 import json
+import time
 import pandas as pd
 import yfinance as yf
 from backend.agents.base_agent import call_claude
+
+# Short-lived cache — price data is live, but 10 min avoids duplicate
+# yfinance downloads when the same ticker is hit multiple times per session
+_cache: dict = {}
+_CACHE_TTL = 600  # 10 minutes
 from backend.data.indicators import (
     calc_rsi, calc_macd, calc_sma, calc_bbands,
     calc_atr, calc_volume_ratio, calc_adx, calc_roc,
@@ -58,6 +64,10 @@ Prefer high conviction on Stage 2 + volume confirmation. Low-ADX choppy markets 
 
 
 def get_vote(ticker: str) -> dict:
+    cached = _cache.get(ticker)
+    if cached and time.time() - cached["ts"] < _CACHE_TTL:
+        return cached["data"]
+
     try:
         hist = yf.Ticker(ticker).history(period="252d")
         if hist.empty or len(hist) < 50:
@@ -216,6 +226,7 @@ def get_vote(ticker: str) -> dict:
         )
         # Inject current price so orchestrator can pass it to Chairman
         vote["current_price"] = current_price
+        _cache[ticker] = {"ts": time.time(), "data": vote}
         return vote
     except Exception as e:
         return {

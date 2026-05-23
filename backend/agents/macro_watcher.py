@@ -92,7 +92,7 @@ _TICKER_SECTOR = {
 }
 
 _cache: dict = {"data": None, "ts": 0.0}
-_CACHE_TTL   = 1800  # 30 minutes
+_CACHE_TTL   = 7200  # 2 hours — macro regime doesn't shift intra-session
 
 
 def _get_macro_snapshot() -> dict:

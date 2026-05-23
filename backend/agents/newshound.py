@@ -4,12 +4,17 @@ Round 3 additions: consecutive earnings beats, squeeze risk score,
 days-to-cover, sentiment divergence (contrarian accumulation signal).
 """
 import json
+import time
 import pandas as pd
 import yfinance as yf
 from backend.agents.base_agent import call_claude
 from backend.data.finnhub_client import (
     get_company_news, get_news_sentiment, get_insider_sentiment, get_earnings_surprise,
 )
+
+# Per-ticker cache — news doesn't change minute-to-minute
+_cache: dict = {}
+_CACHE_TTL = 7200  # 2 hours
 
 SYSTEM_PROMPT = """You are the Newshound on an AI investment committee hunting for 10X opportunities.
 Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
@@ -60,6 +65,11 @@ Prefer SELL with low confidence over HOLD when bearish. Reserve HOLD for genuine
 
 
 def get_vote(ticker: str) -> dict:
+    # Return cached result if fresh enough
+    cached = _cache.get(ticker)
+    if cached and time.time() - cached["ts"] < _CACHE_TTL:
+        return cached["data"]
+
     try:
         news              = get_company_news(ticker, days=14)
         sentiment         = get_news_sentiment(ticker)
@@ -201,11 +211,13 @@ def get_vote(ticker: str) -> dict:
             "sentiment_divergence":      sentiment_divergence, # ★
         }
 
-        return call_claude(
+        result = call_claude(
             SYSTEM_PROMPT,
             f"News/sentiment analysis for {ticker}: {json.dumps(market_data)}",
             "newshound",
         )
+        _cache[ticker] = {"ts": time.time(), "data": result}
+        return result
     except Exception as e:
         return {
             "agent": "newshound", "ticker": ticker,

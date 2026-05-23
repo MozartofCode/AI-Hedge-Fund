@@ -15,7 +15,7 @@ from backend.data.fmp_client import (
 
 # 2-hour cache per ticker — FMP data changes at most once per quarter
 _cache: dict = {}
-_CACHE_TTL = 7200  # seconds
+_CACHE_TTL = 86400  # 24 hours — financials change quarterly, not intraday
 
 SYSTEM_PROMPT = """You are the Fundamentalist on an AI investment committee hunting for 10X opportunities.
 Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
