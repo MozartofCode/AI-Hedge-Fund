@@ -16,8 +16,11 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
   "rationale": "2-3 sentences citing specific indicator values",
-  "suggested_position_size_pct": 0-10
+  "suggested_position_size_pct": 0-10,
+  "momentum_score": 0.0-1.0
 }
+
+momentum_score: pure price momentum grade — 1.0 = extremely strong uptrend (ADX>30, RSI 55-70, above all MAs, RS vs SPY strongly positive, ROC positive), 0.0 = strong downtrend (ADX>25 downward, RSI<35, below MAs, RS negative). 0.5 = neutral/choppy.
 
 Signal weights and rules:
 - TREND FILTER: Only trade in the direction of the trend. ADX > 25 = trending (signals reliable). ADX < 20 = choppy (reduce confidence significantly, prefer HOLD).

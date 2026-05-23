@@ -18,8 +18,15 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
   "rationale": "2-3 sentences citing specific financial metrics",
-  "suggested_position_size_pct": 0-10
+  "suggested_position_size_pct": 0-10,
+  "valuation_score": 0.0-1.0,
+  "growth_score": 0.0-1.0,
+  "profitability_score": 0.0-1.0
 }
+
+valuation_score: 1.0=extremely cheap (low P/E, PEG<1, P/FCF<15, big analyst upside), 0.0=extremely expensive (P/E>50, PEG>3, negative FCF). 0.5=fairly valued.
+growth_score: 1.0=exceptional growth (YoY rev >30%, EPS accelerating, beats on earnings), 0.0=contracting revenue, negative EPS growth. 0.5=stable/slow growth.
+profitability_score: 1.0=highly profitable (gross margin>60%, expanding op margin, growing FCF, low debt), 0.0=unprofitable (negative margins, burning cash, high leverage). 0.5=average.
 
 Key signals and thresholds:
 - P/E ratio: <15 cheap, >35 expensive (always compare to sector)

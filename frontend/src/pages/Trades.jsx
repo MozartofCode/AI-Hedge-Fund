@@ -15,7 +15,6 @@ function formatTime(iso) {
 
 function fmtQty(qty) {
   if (qty == null) return '—'
-  // Show whole number if it is one, otherwise 2 decimal places
   return Number.isInteger(qty) || Math.abs(qty - Math.round(qty)) < 0.001
     ? String(Math.round(qty))
     : Number(qty).toFixed(2)
@@ -37,6 +36,162 @@ const ACTION_STYLE = {
   HOLD: { badge: 'badge-hold', bar: 'bg-gray-500' },
 }
 
+// ── Factor grade helpers ──────────────────────────────────────────────────────
+
+const GRADE_CONFIG = {
+  'A+': { bg: '#15803d', text: '#fff' },
+  'A':  { bg: '#16a34a', text: '#fff' },
+  'A-': { bg: '#22c55e', text: '#fff' },
+  'B+': { bg: '#65a30d', text: '#fff' },
+  'B':  { bg: '#84cc16', text: '#1a2e05' },
+  'B-': { bg: '#bef264', text: '#1a2e05' },
+  'C+': { bg: '#f59e0b', text: '#fff' },
+  'C':  { bg: '#f97316', text: '#fff' },
+  'C-': { bg: '#fb923c', text: '#fff' },
+  'D+': { bg: '#ef4444', text: '#fff' },
+  'D':  { bg: '#dc2626', text: '#fff' },
+  'D-': { bg: '#b91c1c', text: '#fff' },
+  'F':  { bg: '#7f1d1d', text: '#fca5a5' },
+  'N/A':{ bg: '#374151', text: '#9ca3af' },
+}
+
+// ── Factor Grades strip (exported for Portfolio page reuse) ───────────────────
+
+export function FactorGrades({ grades }) {
+  if (!grades) return null
+  const factors = ['Valuation', 'Growth', 'Profitability', 'Momentum', 'Revisions']
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-lg">🏅</span>
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Factor Grades</span>
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {factors.map(factor => {
+          const grade  = grades[factor] ?? 'N/A'
+          const config = GRADE_CONFIG[grade] ?? GRADE_CONFIG['N/A']
+          return (
+            <div
+              key={factor}
+              className="flex flex-col items-center rounded-xl py-3 px-1 gap-1"
+              style={{ backgroundColor: config.bg + '22', border: `1px solid ${config.bg}55` }}
+            >
+              <span className="text-xs text-gray-500 font-medium tracking-wide uppercase text-center leading-tight">
+                {factor}
+              </span>
+              <span
+                className="text-2xl font-black leading-none mt-1"
+                style={{ color: config.bg }}
+              >
+                {grade}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Committee session body (shared between Trade + Portfolio modals) ──────────
+
+export function CommitteeSessionBody({ sessionData, loading, error }) {
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-24 bg-gray-800/60 rounded-xl animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+  if (error) {
+    return <div className="text-gray-500 text-sm text-center py-10">{error}</div>
+  }
+  if (!sessionData) return null
+
+  return (
+    <>
+      {/* Factor Grades */}
+      {sessionData.factor_grades && (
+        <div className="bg-gray-800/60 rounded-xl p-4">
+          <FactorGrades grades={sessionData.factor_grades} />
+        </div>
+      )}
+
+      {/* Chairman verdict */}
+      {sessionData.chairman_rationale && (
+        <div className="bg-gray-800/60 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">🏛️</span>
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Chairman's Rationale</span>
+            {sessionData.weighted_score != null && (
+              <span className="ml-auto text-xs text-gray-600">Score: {sessionData.weighted_score?.toFixed(3)}</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-300 leading-relaxed italic">
+            "{sessionData.chairman_rationale}"
+          </p>
+        </div>
+      )}
+
+      {/* Agent votes */}
+      <div className="space-y-3">
+        {sessionData.agent_votes?.map(v => {
+          const meta    = AGENT_META[v.agent_name] ?? { label: v.agent_name, icon: '🤖', role: '' }
+          const style   = ACTION_STYLE[v.action] ?? ACTION_STYLE.HOLD
+          const confPct = Math.round((v.confidence ?? 0) * 100)
+          const isRM    = v.agent_name === 'risk_manager'
+
+          return (
+            <div
+              key={v.agent_name}
+              className={`bg-gray-800/50 rounded-xl p-4 border ${v.veto ? 'border-red-500/40' : 'border-gray-700/40'}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg leading-none">{meta.icon}</span>
+                  <div>
+                    <div className="text-sm font-semibold text-white leading-tight">{meta.label}</div>
+                    <div className="text-xs text-gray-500">{meta.role}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {v.veto && (
+                    <span className="text-xs font-bold text-red-400 border border-red-500/40 rounded px-2 py-0.5">
+                      VETOED
+                    </span>
+                  )}
+                  <span className={style.badge}>{v.action ?? 'HOLD'}</span>
+                </div>
+              </div>
+
+              {!isRM && (
+                <div className="mb-2">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Confidence</span>
+                    <span className="text-gray-300 font-medium">{confPct}%</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${style.bar}`}
+                      style={{ width: `${confPct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-gray-400 leading-relaxed">
+                {v.rationale || '—'}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
 // ── Trade Detail Modal ────────────────────────────────────────────────────────
 
 function TradeModal({ trade, onClose }) {
@@ -55,7 +210,6 @@ function TradeModal({ trade, onClose }) {
       .catch(() => { setError('Could not load committee session.'); setLoading(false) })
   }, [trade?.session_id])
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
@@ -71,7 +225,7 @@ function TradeModal({ trade, onClose }) {
         className="bg-gray-900 border border-gray-700/80 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
-        {/* Modal header */}
+        {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-gray-800 sticky top-0 bg-gray-900 rounded-t-2xl z-10">
           <div>
             <div className="flex items-center gap-3">
@@ -93,89 +247,9 @@ function TradeModal({ trade, onClose }) {
           </button>
         </div>
 
-        {/* Modal body */}
+        {/* Body */}
         <div className="p-5 space-y-4">
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-24 bg-gray-800/60 rounded-xl animate-pulse" />
-              ))}
-            </div>
-          ) : error ? (
-            <div className="text-gray-500 text-sm text-center py-10">{error}</div>
-          ) : sessionData ? (
-            <>
-              {/* Chairman verdict strip */}
-              {sessionData.chairman_rationale && (
-                <div className="bg-gray-800/60 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">🏛️</span>
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Chairman's Rationale</span>
-                    {sessionData.weighted_score != null && (
-                      <span className="ml-auto text-xs text-gray-600">Score: {sessionData.weighted_score?.toFixed(3)}</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-300 leading-relaxed italic">
-                    "{sessionData.chairman_rationale}"
-                  </p>
-                </div>
-              )}
-
-              {/* Agent votes */}
-              <div className="space-y-3">
-                {sessionData.agent_votes?.map(v => {
-                  const meta   = AGENT_META[v.agent_name] ?? { label: v.agent_name, icon: '🤖', role: '' }
-                  const style  = ACTION_STYLE[v.action] ?? ACTION_STYLE.HOLD
-                  const confPct = Math.round((v.confidence ?? 0) * 100)
-                  const isRM   = v.agent_name === 'risk_manager'
-
-                  return (
-                    <div
-                      key={v.agent_name}
-                      className={`bg-gray-800/50 rounded-xl p-4 border ${v.veto ? 'border-red-500/40' : 'border-gray-700/40'}`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg leading-none">{meta.icon}</span>
-                          <div>
-                            <div className="text-sm font-semibold text-white leading-tight">{meta.label}</div>
-                            <div className="text-xs text-gray-500">{meta.role}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {v.veto && (
-                            <span className="text-xs font-bold text-red-400 border border-red-500/40 rounded px-2 py-0.5">
-                              VETOED
-                            </span>
-                          )}
-                          <span className={style.badge}>{v.action ?? 'HOLD'}</span>
-                        </div>
-                      </div>
-
-                      {!isRM && (
-                        <div className="mb-2">
-                          <div className="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>Confidence</span>
-                            <span className="text-gray-300 font-medium">{confPct}%</span>
-                          </div>
-                          <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${style.bar}`}
-                              style={{ width: `${confPct}%` }}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <p className="text-xs text-gray-400 leading-relaxed">
-                        {v.rationale || '—'}
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          ) : null}
+          <CommitteeSessionBody sessionData={sessionData} loading={loading} error={error} />
         </div>
       </div>
     </div>
@@ -219,7 +293,7 @@ export default function Trades() {
   const [total, setTotal]             = useState(0)
   const [page, setPage]               = useState(1)
   const [pages, setPages]             = useState(1)
-  const [filter, setFilter]           = useState('all') // 'all' | 'buy' | 'sell'
+  const [filter, setFilter]           = useState('all')
   const [loading, setLoading]         = useState(true)
   const [selectedTrade, setSelectedTrade] = useState(null)
 
@@ -253,7 +327,6 @@ export default function Trades() {
 
   return (
     <>
-      {/* Trade detail modal */}
       {selectedTrade && (
         <TradeModal trade={selectedTrade} onClose={() => setSelectedTrade(null)} />
       )}
@@ -268,7 +341,6 @@ export default function Trades() {
             )}
           </div>
 
-          {/* Filter tabs */}
           <div className="flex gap-1 bg-gray-800/50 rounded-xl p-1">
             {['all', 'buy', 'sell'].map(f => (
               <button

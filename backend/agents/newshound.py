@@ -12,8 +12,11 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
   "rationale": "2-3 sentences citing specific news or sentiment data",
-  "suggested_position_size_pct": 0-10
+  "suggested_position_size_pct": 0-10,
+  "revisions_score": 0.0-1.0
 }
+
+revisions_score: analyst estimate revision trend — 1.0=strong positive revisions (many upgrades, multiple earnings beats with acceleration, high sentiment score, insider buying), 0.0=strong negative revisions (downgrades, misses, insider selling, red-flag headlines). 0.5=neutral/mixed.
 
 Key signals:
 - News sentiment score: >0.7 bullish, <0.3 bearish

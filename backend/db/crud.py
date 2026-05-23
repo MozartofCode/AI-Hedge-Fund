@@ -87,6 +87,17 @@ async def get_session_by_id(db: AsyncSession, session_id: uuid.UUID):
     return result.scalar_one_or_none()
 
 
+async def get_latest_session_for_ticker(db: AsyncSession, ticker: str):
+    result = await db.execute(
+        select(CommitteeSession)
+        .options(selectinload(CommitteeSession.agent_votes))
+        .where(CommitteeSession.ticker == ticker.upper())
+        .order_by(desc(CommitteeSession.session_timestamp))
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_recent_sessions(db: AsyncSession, limit: int = 20, offset: int = 0):
     result = await db.execute(
         select(CommitteeSession)
