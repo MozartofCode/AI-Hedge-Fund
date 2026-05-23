@@ -16,7 +16,7 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
-  "rationale": "2-3 sentences citing specific news or sentiment data",
+  "rationale": "1 plain-English sentence — name the single most important news or sentiment signal (e.g. 'Beat earnings 3 times in a row and analysts are raising price targets after last week's product launch.')",
   "suggested_position_size_pct": 0-12,
   "revisions_score": 0.0-1.0
 }

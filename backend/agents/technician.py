@@ -17,7 +17,7 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
-  "rationale": "2-3 sentences citing specific indicator values",
+  "rationale": "1 plain-English sentence — name the single most important signal and what it means (e.g. 'Price is above its rising 200-day average with strong volume on up days — uptrend is healthy.')",
   "suggested_position_size_pct": 0-12,
   "momentum_score": 0.0-1.0
 }

@@ -16,7 +16,7 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
-  "rationale": "2-3 sentences citing macro conditions",
+  "rationale": "1 plain-English sentence — name the single most important macro signal (e.g. 'Interest rates are falling and the market is in a healthy uptrend, which is a good backdrop for growth stocks.')",
   "suggested_position_size_pct": 0-12,
   "risk_off": false
 }

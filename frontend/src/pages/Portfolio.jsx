@@ -304,6 +304,122 @@ const TR_SUGGESTIONS  = ['THYAO.IS', 'ASELS.IS', 'KCHOL.IS', 'GARAN.IS', 'FROTO.
 const NG_SUGGESTIONS  = ['MTNN.LG', 'DANGCEM.LG', 'GTCO.LG', 'ZENITHBANK.LG']
 const MARKET_SUGGESTIONS = { US: US_SUGGESTIONS, BR: BR_SUGGESTIONS, AR: AR_SUGGESTIONS, TR: TR_SUGGESTIONS, NG: NG_SUGGESTIONS }
 
+// ── Analysis Result (Chairman hero + collapsible agent strip) ─────────────────
+
+function AnalysisResult({ result, onRerun }) {
+  const [showAgents, setShowAgents] = useState(false)
+
+  const decision  = result.decision ?? 'HOLD'
+  const decStyle  = DECISION_BG[decision] ?? DECISION_BG.HOLD
+  const decColor  = decision === 'BUY' ? 'text-green-400' : decision === 'SELL' ? 'text-red-400' : 'text-gray-400'
+
+  // Parse rationale into bullet lines (lines starting with •)
+  const rawRationale = result.chairman_rationale ?? ''
+  const bulletLines  = rawRationale
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('•'))
+
+  // If no bullets parsed, fall back to a single block
+  const hasStructured = bulletLines.length > 0
+
+  return (
+    <div className="space-y-3">
+
+      {/* ── Chairman hero card ── */}
+      <div className={`rounded-2xl border p-5 ${decStyle}`}>
+        {/* Verdict row */}
+        <div className="flex items-center gap-4 mb-4">
+          <div className={`text-5xl font-black ${decColor}`}>{decision}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Chairman's Verdict · {result.ticker}</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {result.position_size_pct > 0 && (
+                <span className="text-sm font-semibold text-gray-300">{result.position_size_pct}% position</span>
+              )}
+              {result.risk_off && (
+                <span className="text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-full px-2 py-0.5">⚠️ Risk-off market</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Bullet rationale */}
+        {hasStructured ? (
+          <ul className="space-y-2.5">
+            {bulletLines.map((line, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-sm text-gray-200 leading-snug">
+                <span className="flex-shrink-0 mt-0.5">{line.slice(0, 2)}</span>
+                <span>{line.slice(2).trim()}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-300 leading-relaxed">{rawRationale}</p>
+        )}
+      </div>
+
+      {/* ── Agent vote strip ── */}
+      <div>
+        <button
+          onClick={() => setShowAgents(s => !s)}
+          className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-300 transition-colors w-full mb-2"
+        >
+          <div className="flex items-center gap-1.5 flex-1">
+            {result.agent_votes?.map(v => {
+              const meta  = AGENT_META[v.agent_name] ?? { icon: '🤖' }
+              const color = v.action === 'BUY' ? 'text-green-400' : v.action === 'SELL' ? 'text-red-400' : 'text-gray-400'
+              return (
+                <span key={v.agent_name} className={`text-sm ${color}`} title={`${meta.icon} ${v.action}`}>
+                  {meta.icon}
+                </span>
+              )
+            })}
+            <span className="ml-1">Agent breakdown</span>
+          </div>
+          <span>{showAgents ? '▲ Hide' : '▼ Show'}</span>
+        </button>
+
+        {showAgents && (
+          <div className="space-y-1.5">
+            {result.agent_votes?.map(v => {
+              const meta    = AGENT_META[v.agent_name] ?? { label: v.agent_name, icon: '🤖', role: '' }
+              const style   = ACTION_STYLE_A[v.action] ?? ACTION_STYLE_A.HOLD
+              const confPct = Math.round((v.confidence ?? 0) * 100)
+              const isRM    = v.agent_name === 'risk_manager'
+              return (
+                <div
+                  key={v.agent_name}
+                  className={`bg-gray-800/40 rounded-xl px-3.5 py-2.5 border ${v.veto ? 'border-red-500/30' : 'border-gray-700/30'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-base leading-none flex-shrink-0">{meta.icon}</span>
+                    <span className="text-xs font-medium text-gray-300 flex-1 min-w-0 truncate">{meta.label}</span>
+                    {v.veto && <span className="text-xs font-bold text-red-400">VETO</span>}
+                    {!isRM && <span className="text-xs text-gray-500">{confPct}%</span>}
+                    <span className={style.badge + ' text-xs py-0 px-1.5'}>{v.action ?? 'HOLD'}</span>
+                  </div>
+                  {v.rationale && (
+                    <p className="text-xs text-gray-500 leading-snug mt-1.5 pl-6">{v.rationale}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Re-run */}
+      <div className="text-center">
+        <button onClick={onRerun} className="text-xs text-gray-600 hover:text-gray-400 transition-colors underline underline-offset-2">
+          ↺ Run analysis again
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
 function AnalyzePanel({ market, onClose }) {
   const [ticker, setTicker]   = useState('')
   const [loading, setLoading] = useState(false)
@@ -410,85 +526,7 @@ function AnalyzePanel({ market, onClose }) {
 
           {/* Results */}
           {result && !loading && (
-            <div className="space-y-4">
-              {/* Verdict */}
-              <div className={`card border ${DECISION_BG[result.decision] ?? DECISION_BG.HOLD}`}>
-                <div className="flex items-center gap-4">
-                  <span className="text-4xl">🏛️</span>
-                  <div>
-                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Chairman's Verdict</div>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-3xl font-black ${result.decision === 'BUY' ? 'text-green-400' : result.decision === 'SELL' ? 'text-red-400' : 'text-gray-400'}`}>
-                        {result.decision}
-                      </span>
-                      <div className="text-xs text-gray-500">
-                        Score: <span className="text-gray-300 font-medium">{result.weighted_score?.toFixed(3)}</span>
-                        {result.risk_off && <div className="text-amber-400 mt-0.5">⚠️ Risk-off mode</div>}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {result.chairman_rationale && (
-                  <p className="text-sm text-gray-300 leading-relaxed italic mt-3 pt-3 border-t border-gray-700/40">
-                    "{result.chairman_rationale}"
-                  </p>
-                )}
-              </div>
-
-              {/* Agent cards */}
-              <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">
-                  Agent Votes — {result.ticker}
-                </div>
-                <div className="space-y-2">
-                  {result.agent_votes?.map(v => {
-                    const meta    = AGENT_META[v.agent_name] ?? { label: v.agent_name, icon: '🤖', role: '' }
-                    const style   = ACTION_STYLE_A[v.action] ?? ACTION_STYLE_A.HOLD
-                    const confPct = Math.round((v.confidence ?? 0) * 100)
-                    const isRM    = v.agent_name === 'risk_manager'
-                    return (
-                      <div
-                        key={v.agent_name}
-                        className={`bg-gray-800/50 rounded-xl p-3.5 border ${v.veto ? 'border-red-500/40' : 'border-gray-700/40'}`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg leading-none">{meta.icon}</span>
-                            <div>
-                              <div className="text-sm font-semibold text-white leading-tight">{meta.label}</div>
-                              <div className="text-xs text-gray-500">{meta.role}</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {v.veto && <span className="text-xs font-bold text-red-400 border border-red-500/40 rounded px-2 py-0.5">VETOED</span>}
-                            <span className={style.badge}>{v.action ?? 'HOLD'}</span>
-                          </div>
-                        </div>
-                        {!isRM && (
-                          <div className="mb-1.5">
-                            <div className="flex justify-between text-xs text-gray-500 mb-1">
-                              <span>Confidence</span>
-                              <span className="text-gray-300 font-medium">{confPct}%</span>
-                            </div>
-                            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${confPct}%` }} />
-                            </div>
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-400 leading-relaxed">{v.rationale || '—'}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Re-run */}
-              <div className="text-center pt-1">
-                <button onClick={() => run()} className="text-xs text-gray-600 hover:text-gray-400 transition-colors underline underline-offset-2">
-                  ↺ Run analysis again
-                </button>
-              </div>
-            </div>
+            <AnalysisResult result={result} onRerun={() => run()} />
           )}
 
           {/* Empty state */}

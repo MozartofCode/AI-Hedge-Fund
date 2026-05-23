@@ -22,7 +22,7 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
-  "rationale": "2-3 sentences citing specific financial metrics",
+  "rationale": "1 plain-English sentence — name the single most important financial signal (e.g. 'Revenue grew 45% last quarter and margins are expanding, making the valuation look reasonable.')",
   "suggested_position_size_pct": 0-12,
   "valuation_score": 0.0-1.0,
   "growth_score": 0.0-1.0,
