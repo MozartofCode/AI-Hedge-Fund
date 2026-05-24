@@ -105,11 +105,22 @@ def _weighted_score(votes: list, weights: dict) -> float:
     return round(raw / total_w, 4) if total_w > 0 else 0.5
 
 
-def _conviction_position_size(score: float) -> float:
-    """Scale position size with conviction: 5% at threshold → 12% at perfect score."""
+def _conviction_position_size(score: float, atr_pct: float = None) -> float:
+    """
+    Scale position size with conviction: 5% at threshold → 12% at perfect score.
+    ATR-based volatility cap: high-ATR stocks get smaller positions to keep
+    consistent dollar risk per trade regardless of the stock's daily swing size.
+    """
     conviction = (score - BUY_THRESHOLD) / (1.0 - BUY_THRESHOLD)
     size = _BASE_POSITION_PCT + conviction * (_MAX_POSITION_PCT - _BASE_POSITION_PCT)
-    return round(min(_MAX_POSITION_PCT, max(_BASE_POSITION_PCT, size)), 1)
+    size = round(min(_MAX_POSITION_PCT, max(_BASE_POSITION_PCT, size)), 1)
+    # Volatility cap — ATR > 4% daily = very volatile (SMCI, MSTR, TSLA-like)
+    if atr_pct is not None:
+        if atr_pct > 4.0:
+            size = min(size, 5.0)    # cap at 5% for very high-volatility stocks
+        elif atr_pct > 2.5:
+            size = min(size, 8.0)    # cap at 8% for moderately volatile stocks
+    return size
 
 
 async def run_committee_for_ticker(
@@ -132,6 +143,7 @@ async def run_committee_for_ticker(
     spy_above_200d = macro_vote.get("spy_above_200d")
     weights        = _get_weights(risk_off, vix_raw, spy_above_200d)
     score          = _weighted_score(agent_votes, weights)
+    atr_pct        = tech_vote.get("atr_pct")   # for volatility-adjusted sizing
 
     # ── Decision logic (stop-loss / profit-target override first) ────────────
     force_sell   = risk_vote.get("force_sell", False)
@@ -146,7 +158,7 @@ async def run_committee_for_ticker(
         position_size = 0.0
     elif score >= BUY_THRESHOLD:
         decision      = "BUY"
-        position_size = _conviction_position_size(score)
+        position_size = _conviction_position_size(score, atr_pct)
     elif score <= SELL_THRESHOLD and holds_ticker:
         decision      = "SELL"
         position_size = _BASE_POSITION_PCT
@@ -303,6 +315,7 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
     spy_above_200d = macro_vote.get("spy_above_200d")
     weights        = _get_weights(risk_off, vix_raw, spy_above_200d)
     score          = _weighted_score(agent_votes, weights)
+    atr_pct        = tech_vote.get("atr_pct")
 
     force_sell  = risk_vote.get("force_sell", False)
     take_profit = risk_vote.get("take_profit", False)
@@ -316,7 +329,7 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
         position_size = 0.0
     elif score >= BUY_THRESHOLD:
         decision      = "BUY"
-        position_size = _conviction_position_size(score)
+        position_size = _conviction_position_size(score, atr_pct)
     elif score <= SELL_THRESHOLD and holds_ticker:
         decision      = "SELL"
         position_size = _BASE_POSITION_PCT

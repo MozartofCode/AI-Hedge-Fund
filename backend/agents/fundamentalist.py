@@ -71,6 +71,21 @@ Standard signals:
 - Analyst target upside >25% = institutional conviction; <0% = analysts bearish
 - Upcoming earnings within 3 days: increase caution (gap risk)
 
+★ SHARE DILUTION (dilution_yoy_pct): Shares outstanding change year-over-year.
+  - < -2% = buybacks shrinking float (very bullish — company confident, per-share value growing)
+  - 0 to +5% = acceptable dilution (stock comp / small raises)
+  - > +10% = heavy dilution destroying per-share value. Penalize significantly even if revenue grows.
+  - Revenue growing 30% but shares +15% = only 13% per-share growth. Don't ignore this.
+
+★ CURRENT RATIO (current_ratio): Current assets / current liabilities.
+  - > 2.0 = strong liquidity buffer
+  - 1.0–2.0 = adequate
+  - < 1.0 = short-term cash stress — raise concern unless company has reliable revolving credit
+
+★ BUYBACK YIELD (buyback_yield_pct): % of market cap repurchased last quarter (annualized).
+  - > 3% = aggressive buybacks = strong capital allocation signal + float reduction
+  - > 5% = exceptionally shareholder-friendly, supports per-share value
+
 Prefer SELL with low confidence over HOLD when bearish. Reserve HOLD for genuine neutrality."""
 
 
@@ -284,6 +299,43 @@ def get_vote(ticker: str) -> dict:
         except Exception:
             pass
 
+        # ── ★ Share dilution YoY ─────────────────────────────────────────────
+        # Positive = shares outstanding growing (dilutive, bad for per-share value)
+        # Negative = buybacks shrinking share count (bullish)
+        dilution_yoy_pct = None
+        try:
+            if len(income) >= 5:
+                sh_now  = (income[0].get("weightedAverageShsDilOut")
+                           or income[0].get("weightedAverageShsOut") or 0)
+                sh_year = (income[4].get("weightedAverageShsDilOut")
+                           or income[4].get("weightedAverageShsOut") or 0)
+                if sh_year and sh_year > 0:
+                    dilution_yoy_pct = round((sh_now - sh_year) / sh_year * 100, 2)
+        except Exception:
+            pass
+
+        # ── ★ Current ratio (liquidity check) ────────────────────────────────
+        current_ratio = None
+        try:
+            if balance:
+                curr_assets = float(balance[0].get("totalCurrentAssets") or 0)
+                curr_liab   = float(balance[0].get("totalCurrentLiabilities") or 0)
+                if curr_liab > 0:
+                    current_ratio = round(curr_assets / curr_liab, 2)
+        except Exception:
+            pass
+
+        # ── ★ Buyback yield ───────────────────────────────────────────────────
+        buyback_yield_pct = None
+        try:
+            if cash_flow and profile:
+                repurchased = abs(float(cash_flow[0].get("commonStockRepurchased") or 0))
+                mkt_cap     = float(profile.get("mktCap") or 0)
+                if mkt_cap > 0 and repurchased > 0:
+                    buyback_yield_pct = round(repurchased / mkt_cap * 100, 2)
+        except Exception:
+            pass
+
         # ── Analyst price target upside ───────────────────────────────────────
         target_upside_pct = None
         try:
@@ -341,6 +393,10 @@ def get_vote(ticker: str) -> dict:
             # Market context
             "market_cap":                profile.get("mktCap"),
             "upcoming_earnings":         upcoming_earnings,
+            # ★ New signals
+            "dilution_yoy_pct":          dilution_yoy_pct,    # ★ share count change
+            "current_ratio":             current_ratio,        # ★ liquidity
+            "buyback_yield_pct":         buyback_yield_pct,   # ★ capital return
         }
 
         return call_claude(

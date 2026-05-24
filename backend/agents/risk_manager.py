@@ -1,9 +1,13 @@
+import yfinance as yf
+
 MAX_POSITIONS             = 10     # raised 7→10 — more room to hunt winners
 MAX_SINGLE_POSITION_PCT   = 12.0   # raised 10→12% for high-conviction plays
 MAX_DRAWDOWN_PCT          = 12.0   # slight breathing room
 MAX_SAME_SECTOR_POSITIONS = 3      # raised 2→3 — allow thematic concentration
 STOP_LOSS_PCT             = 8.0    # exit if down 8% from entry
 PROFIT_TARGET_PCT         = 75.0   # raised 20→75% — let winners RUN (don't kill 10X plays at +20%)
+TRAILING_START_PCT        = 20.0   # start trailing once position is up 20%
+TRAILING_STOP_TRAIL       = 20.0   # sell if price falls 20% from its 60-day high
 BASE_POSITION_PCT         = 5.0
 MAX_CONVICTION_PCT        = 12.0   # ceiling for high-conviction trades
 
@@ -91,6 +95,30 @@ def get_vote(ticker: str, portfolio: dict, peak_value: float = None) -> dict:
                     ),
                     "portfolio_drawdown_pct": drawdown_pct,
                 }
+
+            # ── ★ Trailing stop: protect profits once up 20% ──────────────────
+            if pl_pct >= TRAILING_START_PCT:
+                try:
+                    hist_60d    = yf.Ticker(ticker).history(period="60d")[["Close","High"]].dropna()
+                    if not hist_60d.empty:
+                        recent_high = float(hist_60d["High"].max())
+                        cur_price   = float(hist_60d["Close"].iloc[-1])
+                        trail_px    = recent_high * (1 - TRAILING_STOP_TRAIL / 100)
+                        if cur_price > 0 and cur_price <= trail_px:
+                            drop_from_high = round((cur_price / recent_high - 1) * 100, 1)
+                            return {
+                                "agent": "risk_manager", "ticker": ticker,
+                                "veto": False, "force_sell": True, "take_profit": False,
+                                "approved_position_size_pct": BASE_POSITION_PCT,
+                                "reason": (
+                                    f"Trailing stop triggered: {ticker} up {pl_pct:.1f}% from entry "
+                                    f"but dropped {drop_from_high:.1f}% from its 60d high of "
+                                    f"${recent_high:.2f}. Locking in profits."
+                                ),
+                                "portfolio_drawdown_pct": drawdown_pct,
+                            }
+                except Exception:
+                    pass   # never let a data fetch error block risk operations
 
             if pl_pct >= PROFIT_TARGET_PCT:
                 return {

@@ -61,6 +61,12 @@ Standard signals:
 - Red flags: FDA rejection, SEC investigation, CEO departure, guidance cut → SELL high confidence
 - Positive catalysts: new product launch, contract win, acquisition premium → BUY
 
+★ UNUSUAL CALL ACTIVITY (unusual_call_activity, call_vol_to_oi):
+  - unusual_call_activity=True means >30% of total call open interest traded in a single session.
+  - This is the options market equivalent of a block trade — informed money positioning ahead of a move.
+  - unusual_call_activity=True + positive catalyst (earnings soon, product launch) = HIGH conviction BUY.
+  - call_vol_to_oi > 0.5 = extremely unusual — institutions rarely buy this aggressively unless they know something.
+
 Prefer SELL with low confidence over HOLD when bearish. Reserve HOLD for genuine neutrality."""
 
 
@@ -145,17 +151,29 @@ def get_vote(ticker: str) -> dict:
         except Exception:
             pass
 
-        # Put/call ratio from nearest-expiry options chain
-        put_call_ratio = None
+        # Put/call ratio + unusual call activity from nearest-expiry options chain
+        put_call_ratio        = None
+        unusual_call_activity = False
+        call_vol_to_oi        = None
         try:
             t    = yf.Ticker(ticker)
             opts = t.options
             if opts:
-                chain    = t.option_chain(opts[0])
-                calls_oi = chain.calls["openInterest"].sum()
-                puts_oi  = chain.puts["openInterest"].sum()
-                if calls_oi > 0:
-                    put_call_ratio = round(float(puts_oi / calls_oi), 2)
+                # Aggregate across nearest 2 expirations
+                total_call_vol = 0
+                total_call_oi  = 0
+                total_puts_oi  = 0
+                for exp in opts[:2]:
+                    chain = t.option_chain(exp)
+                    total_call_vol += int(chain.calls["volume"].fillna(0).sum())
+                    total_call_oi  += int(chain.calls["openInterest"].fillna(0).sum())
+                    total_puts_oi  += int(chain.puts["openInterest"].fillna(0).sum())
+                if total_call_oi > 0:
+                    put_call_ratio = round(float(total_puts_oi / total_call_oi), 2)
+                    # Volume-to-OI ratio: how much of outstanding contracts traded today
+                    call_vol_to_oi = round(total_call_vol / total_call_oi, 3)
+                    # Unusual = >30% of open interest traded in a single day + meaningful volume
+                    unusual_call_activity = bool(call_vol_to_oi > 0.30 and total_call_vol > 500)
         except Exception:
             pass
 
@@ -209,6 +227,9 @@ def get_vote(ticker: str) -> dict:
             "squeeze_risk_score":        squeeze_risk_score,  # ★
             # ★ Contrarian signal
             "sentiment_divergence":      sentiment_divergence, # ★
+            # ★ Unusual options activity
+            "unusual_call_activity":     unusual_call_activity, # ★
+            "call_vol_to_oi":            call_vol_to_oi,        # ★
         }
 
         result = call_claude(

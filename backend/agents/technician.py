@@ -60,6 +60,14 @@ PRIORITY SIGNALS for 10X candidates (weight these heavily):
 
 10. WEEKLY RSI check: If daily RSI signals BUY but weekly RSI > 70, moderate confidence (higher-timeframe overbought).
 
+11. BB SQUEEZE (bb_squeeze=True): Bollinger Bands at their tightest in a year = stock is coiling for a big move.
+    - bb_squeeze=True + Stage 2 uptrend + rising OBV = explosive breakout setup. BUY with high conviction.
+    - bb_squeeze_pctile < 10 = extreme coil. Direction of breakout = direction of next major move.
+
+12. OBV TREND (obv_trend_pct): On-Balance Volume shows the cumulative smart-money footprint.
+    - obv_trend_pct > +10% = OBV rising faster than price = institutions accumulating ahead of a move (bullish).
+    - obv_trend_pct < -10% = OBV falling while price holds = distribution (bearish divergence, reduce confidence).
+
 Prefer high conviction on Stage 2 + volume confirmation. Low-ADX choppy markets = HOLD. Prefer SELL with low confidence over HOLD when bearish."""
 
 
@@ -175,6 +183,37 @@ def get_vote(ticker: str) -> dict:
         except Exception:
             pass
 
+        # ── OBV trend: cumulative smart-money footprint ───────────────────────
+        # Positive = accumulation, Negative = distribution
+        obv_trend_pct = None
+        try:
+            direction = closes.diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+            obv = (volumes * direction).cumsum()
+            if len(obv) >= 50:
+                obv_sma20 = float(obv.iloc[-20:].mean())
+                obv_sma50 = float(obv.iloc[-50:].mean())
+                if abs(obv_sma50) > 0:
+                    obv_trend_pct = round((obv_sma20 - obv_sma50) / abs(obv_sma50) * 100, 2)
+        except Exception:
+            pass
+
+        # ── BB squeeze: bands tightest in a year = stock is coiling ──────────
+        bb_squeeze        = False
+        bb_squeeze_pctile = None
+        bb_width_pct      = None
+        try:
+            roll_std  = closes.rolling(20).std()
+            roll_mid  = closes.rolling(20).mean()
+            bb_widths = (roll_std * 4 / roll_mid * 100).dropna()   # 4σ width as % of price
+            if len(bb_widths) >= 20:
+                bb_width_pct = round(float(bb_widths.iloc[-1]), 2)
+                if len(bb_widths) >= 52:
+                    pctile = float((bb_widths < bb_widths.iloc[-1]).mean() * 100)
+                    bb_squeeze_pctile = round(pctile, 1)
+                    bb_squeeze = pctile < 20   # bottom 20th percentile = squeeze
+        except Exception:
+            pass
+
         # ── Last 5 bars ───────────────────────────────────────────────────────
         recent = hist.tail(5)
         price_action = [
@@ -217,6 +256,11 @@ def get_vote(ticker: str) -> dict:
             "pct_from_52w_high":     pct_from_52w_high,
             "pct_from_52w_low":      pct_from_52w_low,
             "recent_price_action":   price_action,
+            # ★ New signals
+            "obv_trend_pct":         obv_trend_pct,       # ★ smart-money accumulation
+            "bb_squeeze":            bb_squeeze,           # ★ coiling for big move
+            "bb_squeeze_pctile":     bb_squeeze_pctile,   # ★ how rare the squeeze is
+            "bb_width_pct":          bb_width_pct,
         }
 
         vote = call_claude(
@@ -224,8 +268,9 @@ def get_vote(ticker: str) -> dict:
             f"Technical analysis for {ticker}: {json.dumps(market_data)}",
             "technician",
         )
-        # Inject current price so orchestrator can pass it to Chairman
+        # Inject metadata so orchestrator can use them directly (no Claude parsing)
         vote["current_price"] = current_price
+        vote["atr_pct"]       = atr_pct   # for volatility-adjusted position sizing
         _cache[ticker] = {"ts": time.time(), "data": vote}
         return vote
     except Exception as e:

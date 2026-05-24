@@ -54,6 +54,21 @@ USD: 1w change > +1% = headwind for multinational earnings. Weakening USD = tail
 SECTOR MOMENTUM: Rising sector ETF (20d > +3%) = tailwind for stocks in that sector.
 HIGH-IMPACT EVENTS within 2 days (Fed, CPI, NFP) = increase caution, risk_off = true.
 
+★ CREDIT SPREADS (credit_stress, hyg_vs_iei_20d_pp): High-yield bond performance vs investment grade.
+  - credit_stress=True (HYG underperforms IEI by >2pp in 20 days) = credit markets tightening = risk_off.
+    Equities almost always follow credit stress within 2-4 weeks. This is a leading indicator.
+  - credit_stress=False + hyg outperforming = credit is healthy = risk-on green light.
+
+★ BITCOIN (btc_above_200d, btc_20d_roc): Risk appetite proxy for growth/tech stocks.
+  - btc_above_200d=True + btc_20d_roc > +10% = full risk-on. Growth stocks have a tailwind.
+  - btc_above_200d=False = risk appetite suppressed. Growth/high-PE stocks face headwinds.
+  - BTC falling hard (-15% in 20d) while SPY holds = warning sign for high-beta growth names.
+
+★ MARKET BREADTH (market_breadth_rsp_spy): RSP (equal-weight S&P) vs SPY (cap-weight) 20d spread.
+  - Positive (RSP > SPY) = broad market participation = healthy bull market. BUY with confidence.
+  - Negative (SPY > RSP by >2pp) = narrow rally, only mega-caps rising = fragile market.
+    Narrow markets often precede corrections when the few leaders finally crack.
+
 Prefer SELL with low confidence over HOLD when bearish. Reserve HOLD for genuine neutrality."""
 
 _SECTOR_ETFS = {
@@ -183,6 +198,50 @@ def _get_macro_snapshot() -> dict:
     except Exception:
         pass
 
+    # ── ★ Credit spread proxy: HYG vs IEI ────────────────────────────────────
+    # HYG underperforming investment-grade bonds = credit stress = equities follow
+    credit_stress       = None
+    hyg_vs_iei_20d      = None
+    try:
+        hyg_h = yf.Ticker("HYG").history(period="30d")["Close"].dropna()
+        iei_h = yf.Ticker("IEI").history(period="30d")["Close"].dropna()
+        if len(hyg_h) >= 20 and len(iei_h) >= 20:
+            hyg_roc = (float(hyg_h.iloc[-1]) - float(hyg_h.iloc[-20])) / float(hyg_h.iloc[-20]) * 100
+            iei_roc = (float(iei_h.iloc[-1]) - float(iei_h.iloc[-20])) / float(iei_h.iloc[-20]) * 100
+            hyg_vs_iei_20d = round(hyg_roc - iei_roc, 2)
+            credit_stress  = bool(hyg_vs_iei_20d < -2.0)   # HY bonds underperforming > 2pp
+    except Exception:
+        pass
+
+    # ── ★ Bitcoin risk appetite proxy ────────────────────────────────────────
+    # BTC trend correlates strongly with risk-on / risk-off for growth stocks
+    btc_above_200d = None
+    btc_20d_roc    = None
+    try:
+        btc_h = yf.Ticker("BTC-USD").history(period="252d")["Close"].dropna()
+        if len(btc_h) >= 200:
+            btc_above_200d = bool(float(btc_h.iloc[-1]) > float(btc_h.iloc[-200:].mean()))
+        if len(btc_h) >= 20:
+            btc_20d_roc = round(
+                (float(btc_h.iloc[-1]) - float(btc_h.iloc[-20])) / float(btc_h.iloc[-20]) * 100, 2
+            )
+    except Exception:
+        pass
+
+    # ── ★ Market breadth: RSP (equal-weight) vs SPY (cap-weight) ─────────────
+    # Equal-weight outperforming = broad participation = healthy bull market
+    # Cap-weight outperforming   = narrow rally driven by mega-caps = fragile
+    market_breadth_rsp_spy = None
+    try:
+        rsp_h   = yf.Ticker("RSP").history(period="30d")["Close"].dropna()
+        spy_h30 = yf.Ticker("SPY").history(period="30d")["Close"].dropna()
+        if len(rsp_h) >= 20 and len(spy_h30) >= 20:
+            rsp_20d = (float(rsp_h.iloc[-1]) - float(rsp_h.iloc[-20])) / float(rsp_h.iloc[-20]) * 100
+            spy_20d = (float(spy_h30.iloc[-1]) - float(spy_h30.iloc[-20])) / float(spy_h30.iloc[-20]) * 100
+            market_breadth_rsp_spy = round(rsp_20d - spy_20d, 2)
+    except Exception:
+        pass
+
     # ── Economic calendar ─────────────────────────────────────────────────────
     events = []
     try:
@@ -209,6 +268,12 @@ def _get_macro_snapshot() -> dict:
         "sector_performance":      sector_perf,
         "sector_leadership_rank":  sector_leadership_rank, # ★ ranked by momentum
         "upcoming_us_events":      events,
+        # ★ New signals
+        "credit_stress":           credit_stress,          # ★ HYG vs IEI divergence
+        "hyg_vs_iei_20d":          hyg_vs_iei_20d,         # ★ spread in pp
+        "btc_above_200d":          btc_above_200d,         # ★ crypto risk appetite
+        "btc_20d_roc":             btc_20d_roc,            # ★ BTC momentum
+        "market_breadth_rsp_spy":  market_breadth_rsp_spy, # ★ breadth (RSP-SPY)
     }
     _cache = {"data": data, "ts": time.time()}
     return data
@@ -238,7 +303,13 @@ def get_vote(ticker: str) -> dict:
             "usd_1w_change_pct":      macro["usd_1w_change_pct"],
             "sector_leadership_rank": macro["sector_leadership_rank"], # ★
             "all_sector_performance": macro["sector_performance"],
-            "upcoming_us_events":     macro["upcoming_us_events"],
+            "upcoming_us_events":      macro["upcoming_us_events"],
+            # ★ New signals
+            "credit_stress":           macro["credit_stress"],
+            "hyg_vs_iei_20d_pp":       macro["hyg_vs_iei_20d"],
+            "btc_above_200d":          macro["btc_above_200d"],
+            "btc_20d_roc":             macro["btc_20d_roc"],
+            "market_breadth_rsp_spy":  macro["market_breadth_rsp_spy"],
         }
 
         result = call_claude(
