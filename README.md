@@ -20,11 +20,11 @@ AlphaCommittee runs an autonomous investment committee 3× per trading day. For 
 
 | Agent | Role | Key Signals |
 |---|---|---|
-| 📈 **Technician** | Price action & momentum | RSI, MACD, SMA50/200, Stage 2 uptrend, ATR expansion, volume conviction, relative strength vs SPY |
-| 📊 **Fundamentalist** | Company health & valuation | Revenue acceleration, EPS inflection, FCF turn, gross margin expansion, P/FCF, analyst targets |
-| 📰 **Newshound** | News, sentiment & catalysts | Consecutive earnings beats, insider sentiment, analyst revisions, squeeze risk score, days-to-cover |
-| 🌍 **Macro Watcher** | Market-wide conditions | VIX, yield curve, 10Y rate regime, SPY trend, sector rotation, Fed/CPI calendar |
-| 🛡️ **Risk Manager** | Portfolio guardrails | Drawdown guard, stop-loss trigger (−8%), profit target (+75%), position limits, sector concentration |
+| 📈 **Technician** | Price action & momentum | RSI, MACD, SMA50/200, Stage 2 uptrend, ATR expansion, volume conviction, OBV trend, BB squeeze, relative strength vs SPY |
+| 📊 **Fundamentalist** | Company health & valuation | Revenue acceleration, EPS inflection, FCF turn, gross margin expansion, P/FCF, share dilution, current ratio, buyback yield, analyst targets |
+| 📰 **Newshound** | News, sentiment & catalysts | Consecutive earnings beats, insider sentiment, analyst revisions, squeeze risk, days-to-cover, unusual call activity |
+| 🌍 **Macro Watcher** | Market-wide conditions | VIX, yield curve, 10Y rate regime, SPY trend, sector rotation, credit spreads (HYG/IEI), BTC risk appetite, market breadth (RSP/SPY) |
+| 🛡️ **Risk Manager** | Portfolio guardrails | Drawdown guard, stop-loss (−8%), trailing stop (−20% from 60d high), profit target (+75%), ATR-adjusted position sizing |
 
 ### The Chairman
 
@@ -61,7 +61,8 @@ Slack notifications are US-only. All other markets trade silently.
 | Price Data | yfinance (free, global — `.SA` Brazil, `.IS` Turkey, `.LG` Nigeria) |
 | Financials | FMP (Financial Modeling Prep API) |
 | News & Sentiment | Finnhub API |
-| AI | Anthropic Claude `claude-sonnet-4-6` |
+| AI (agents) | Anthropic Claude `claude-haiku-4-5` (cost-optimised) |
+| AI (chairman) | Anthropic Claude `claude-sonnet-4-6` (quality synthesis) |
 | Notifications | Slack Web API (US trades only) |
 | Frontend | React 18 · Tailwind CSS · Recharts · Vite |
 | Backend Hosting | Railway (auto-deploys, runs scheduler 24/7) |
@@ -178,14 +179,77 @@ Paper portfolio rows for all 5 markets are seeded idempotently on every boot.
 
 ## Risk Manager Rules
 
-| Rule | Limit |
-|---|---|
-| Max open positions | 10 |
-| Max single position size | 12% of portfolio |
-| Stop-loss trigger | −8% from entry |
-| Profit target (take partial) | +75% |
-| Max drawdown before blocking BUYs | −12% |
-| Max positions in same sector | 3 |
+| Rule | Value | Notes |
+|---|---|---|
+| Max open positions | 10 | |
+| Max single position size | 12% of portfolio | Hard ceiling |
+| ATR-adjusted size cap | 5% (ATR >4%) / 8% (ATR >2.5%) | Keeps dollar risk consistent per trade |
+| Stop-loss | −8% from entry | Hard exit |
+| Trailing stop | −20% from 60-day high | Activates once position is up +20% |
+| Profit target | +75% | Take profits; Chairman may override for strong compounders |
+| Max portfolio drawdown | −12% | Blocks all new BUYs until recovery |
+| Max positions in same sector | 3 | Prevents thematic over-concentration |
+
+---
+
+## Agent Signal Reference
+
+### 📈 Technician
+| Signal | Bullish | Bearish |
+|---|---|---|
+| Stage 2 uptrend | Price > rising 200d MA | Price below 200d MA or MA falling |
+| RSI | 50–70 in uptrend | >70 overbought, <30 oversold (unless divergence) |
+| MACD histogram | Positive and expanding | Negative and contracting |
+| ADX | >25 = trend reliable | <20 = choppy, reduce confidence |
+| Volume conviction ratio | >2.0 = institutional accumulation | <0.8 = distribution |
+| RS vs SPY (3m) | >+10% = market leader | <−10% = laggard |
+| **BB squeeze** | `bb_squeeze=True` + uptrend = coiled spring | Squeeze in downtrend = accelerating drop |
+| **OBV trend** | >+10% = smart money accumulating | <−10% = distribution divergence |
+| ATR expansion ratio | >1.3 = volatility expanding (growth phase) | Declining ATR = stalling |
+
+### 📊 Fundamentalist
+| Signal | Bullish | Bearish |
+|---|---|---|
+| Revenue acceleration | YoY growth rate increasing | Decelerating growth rate |
+| EPS acceleration | Earnings growing faster each quarter | EPS misses or contraction |
+| FCF inflection | Negative → positive FCF | Sustained cash burn |
+| Gross margin expansion | >200bps YoY = pricing power | Compression = competition |
+| Rule of 40 | >60 = elite SaaS | <20 = struggling |
+| **Share dilution** | <−2% (buybacks) = float shrinking | >+10% = per-share value eroding |
+| **Current ratio** | >2.0 = strong liquidity | <1.0 = short-term cash stress |
+| **Buyback yield** | >3% = aggressive capital return | 0% = no shareholder focus |
+| P/FCF | <20 = healthy valuation | >40 = expensive |
+| Analyst target upside | >25% = institutional conviction | <0% = analysts bearish |
+
+### 📰 Newshound
+| Signal | Bullish | Bearish |
+|---|---|---|
+| Consecutive earnings beats | 3+ = confirmed growth inflection | Any miss breaks the streak |
+| Insider MSPR | >0.5 = heavy net buying | <−0.3 = insiders selling |
+| Squeeze risk score | >5 + catalyst = explosive move | — |
+| Sentiment divergence | Negative news + insider buying = contrarian accumulation | — |
+| **Unusual call activity** | `call_vol_to_oi > 0.30` = informed positioning | High put activity = hedging fear |
+| Analyst net upgrades | Positive = institutional confidence | Net downgrades = distribution |
+
+### 🌍 Macro Watcher
+| Signal | Bullish | Bearish / Risk-off |
+|---|---|---|
+| VIX | <15 = calm | >25 = risk-off |
+| Yield curve (10Y−3M) | Positive = healthy | Inverted = recession risk |
+| 10Y yield trend | Falling + <4.5% = tailwind for growth | Rising fast (>+0.15%/wk) = headwind |
+| SPY regime | Above 50d + 200d = bull market | Below 200d = bear market |
+| **Credit spreads (HYG/IEI)** | HYG outperforming = credit healthy | HYG −2pp vs IEI = credit stress (leads equities by weeks) |
+| **BTC above 200d MA** | True = risk appetite on | False = risk-off for growth/tech |
+| **Market breadth (RSP/SPY)** | RSP > SPY = broad participation | SPY > RSP = narrow mega-cap rally (fragile) |
+| Sector leadership | Technology in top 2 = green light | Defensives leading = rotation out of growth |
+
+### 🛡️ Risk Manager (pure Python — no AI)
+All rules are deterministic hard exits, not suggestions:
+- **Stop-loss:** −8% from entry → immediate forced sell
+- **Trailing stop:** Once up +20%, sells if price drops 20% from 60-day high → locks in profits
+- **Profit target:** +75% → take profits (Chairman can override for confirmed compounders)
+- **Portfolio drawdown:** −12% from peak → blocks all new BUYs until recovery
+- **ATR-adjusted sizing:** High-volatility stocks (ATR >4%) capped at 5% position; moderate (ATR >2.5%) capped at 8%
 
 ---
 
@@ -193,7 +257,7 @@ Paper portfolio rows for all 5 markets are seeded idempotently on every boot.
 
 | Service | Cost |
 |---|---|
-| Anthropic Claude | ~$0.50/day (~$15/month) |
+| Anthropic Claude | ~$0.08/day (~$2.50/month) |
 | Finnhub | Free tier |
 | FMP | Free tier |
 | yfinance | Free |
@@ -201,4 +265,6 @@ Paper portfolio rows for all 5 markets are seeded idempotently on every boot.
 | Vercel | Free |
 | Supabase | Free tier |
 
-**Total: ~$20/month** to run the full system across all 5 markets.
+**Total: ~$10/month** to run the full system across all 5 markets.
+
+> **Cost optimisation:** The 4 analytical agents use `claude-haiku-4-5` (12× cheaper than Sonnet) with 150 max output tokens. Only the Chairman uses `claude-sonnet-4-6`. Agent caches (Fundamentalist 24h, Macro 2h, Newshound 2h, Technician 10min) further reduce API calls across the 3 daily sessions.
