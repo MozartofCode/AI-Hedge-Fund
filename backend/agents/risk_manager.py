@@ -1,15 +1,15 @@
 import yfinance as yf
 
-MAX_POSITIONS             = 25     # raised 10→25 — run a full diversified portfolio
-MAX_SINGLE_POSITION_PCT   = 12.0   # hard ceiling per trade
-MAX_DRAWDOWN_PCT          = 15.0   # allow more breathing room in volatile markets
-MAX_SAME_SECTOR_POSITIONS = 5      # raised 3→5 — allow thematic concentration in hot sectors
-STOP_LOSS_PCT             = 8.0    # exit if down 8% from entry
-PROFIT_TARGET_PCT         = 75.0   # let winners RUN — don't kill 10X plays at +20%
-TRAILING_START_PCT        = 20.0   # start trailing once position is up 20%
-TRAILING_STOP_TRAIL       = 20.0   # sell if price falls 20% from its 60-day high
-BASE_POSITION_PCT         = 3.0    # smaller base — fits more positions
-MAX_CONVICTION_PCT        = 12.0   # ceiling for high-conviction trades
+MAX_POSITIONS             = 9999   # unlimited — hold as many as conviction demands
+MAX_SINGLE_POSITION_PCT   = 100.0  # no cap — conviction can drive 50-100% in one stock
+MAX_DRAWDOWN_PCT          = 50.0   # only block buys on catastrophic drawdown
+MAX_SAME_SECTOR_POSITIONS = 9999   # no sector concentration limit
+STOP_LOSS_PCT             = 8.0    # only hard guardrail — cut losers at -8%
+PROFIT_TARGET_PCT         = 500.0  # let winners run to 5X before forced exit
+TRAILING_START_PCT        = 30.0   # start trailing once position is up 30%
+TRAILING_STOP_TRAIL       = 15.0   # tighter 15% trail once profitable — locks in gains
+BASE_POSITION_PCT         = 3.0    # minimum size; conviction scaling drives higher
+MAX_CONVICTION_PCT        = 50.0   # ceiling for highest-conviction plays
 
 # Sector map — 50-ticker US watchlist + non-US ADRs
 _SECTOR_MAP = {
@@ -174,43 +174,16 @@ def get_vote(ticker: str, portfolio: dict, peak_value: float = None) -> dict:
                     "portfolio_drawdown_pct": drawdown_pct,
                 }
 
-        # ── Duplicate position check (blocks BUY only) ────────────────────────
+        # ── Duplicate position check (blocks re-buy only) ────────────────────
+        # We don't add to existing positions — each ticker is entered once.
         if any(p["ticker"] == ticker for p in positions):
             return {
                 "agent": "risk_manager", "ticker": ticker,
                 "veto": True, "force_sell": False, "take_profit": False,
                 "approved_position_size_pct": 0,
-                "reason": f"Position already open for {ticker}. Blocking duplicate BUY.",
+                "reason": f"Position already open for {ticker}. No pyramid BUYs.",
                 "portfolio_drawdown_pct": drawdown_pct,
             }
-
-        # ── Max open positions check ──────────────────────────────────────────
-        if len(positions) >= MAX_POSITIONS:
-            return {
-                "agent": "risk_manager", "ticker": ticker,
-                "veto": True, "force_sell": False, "take_profit": False,
-                "approved_position_size_pct": 0,
-                "reason": f"Max {MAX_POSITIONS} open positions reached ({len(positions)} open).",
-                "portfolio_drawdown_pct": drawdown_pct,
-            }
-
-        # ── Sector concentration check ────────────────────────────────────────
-        ticker_sector = _SECTOR_MAP.get(ticker.upper())
-        if ticker_sector and ticker_sector != "Broad Market":
-            same_sector = [p for p in positions if _SECTOR_MAP.get(p["ticker"].upper()) == ticker_sector]
-            if len(same_sector) >= MAX_SAME_SECTOR_POSITIONS:
-                held = ", ".join(p["ticker"] for p in same_sector)
-                return {
-                    "agent": "risk_manager", "ticker": ticker,
-                    "veto": True, "force_sell": False, "take_profit": False,
-                    "approved_position_size_pct": 0,
-                    "reason": (
-                        f"Sector concentration limit: already holding {len(same_sector)} "
-                        f"{ticker_sector} position(s) ({held}). "
-                        f"Max {MAX_SAME_SECTOR_POSITIONS} per sector."
-                    ),
-                    "portfolio_drawdown_pct": drawdown_pct,
-                }
 
         # ── Approved ──────────────────────────────────────────────────────────
         current_exposure_pct = (
@@ -224,9 +197,8 @@ def get_vote(ticker: str, portfolio: dict, peak_value: float = None) -> dict:
             "approved_position_size_pct": BASE_POSITION_PCT,
             "reason": (
                 f"Approved. Portfolio exposure {current_exposure_pct:.1f}%, "
-                f"{len(positions)}/{MAX_POSITIONS} positions open. "
-                f"Drawdown {drawdown_pct:.1f}%. "
-                f"Sector: {ticker_sector or 'unknown'}."
+                f"{len(positions)} positions open. "
+                f"Drawdown {drawdown_pct:.1f}%."
             ),
             "portfolio_drawdown_pct": drawdown_pct,
         }

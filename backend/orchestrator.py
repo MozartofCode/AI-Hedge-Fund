@@ -11,6 +11,7 @@ from backend.db.crud import (
     log_trade, save_portfolio_snapshot, get_peak_portfolio_value,
 )
 from backend.markets import MARKETS, is_market_open
+from backend.screener import get_watchlist
 from backend.notifications.slack_notifier import notify_trade
 
 # ── Base agent weights (regime-adjusted in _get_weights) ─────────────────────
@@ -26,8 +27,8 @@ BUY_THRESHOLD  = 0.52   # lowered from 0.60 — trigger on moderate conviction
 SELL_THRESHOLD = 0.45   # raised from 0.35 — sell faster when signal fades, more churn
 
 # ── Conviction-based position sizing ─────────────────────────────────────────
-_BASE_POSITION_PCT = 3.0    # smaller base — more positions can coexist
-_MAX_POSITION_PCT  = 10.0   # cap per trade
+_BASE_POSITION_PCT = 3.0    # minimum size — conviction scaling drives higher
+_MAX_POSITION_PCT  = 50.0   # no artificial cap — go big on the best setups
 
 CHAIRMAN_SYSTEM = """You are the Chairman of an AI investment committee. Five specialist agents have voted on this stock.
 
@@ -57,11 +58,12 @@ Price target rules (use the current_price provided in the input):
 - All values must be actual dollar prices, not percentages
 
 Decision rules:
-- BUY if overall score > 0.60 and no risk veto
-- SELL if score < 0.35 or risk veto fires
+- BUY if overall score > 0.52 and no risk veto
+- SELL if score < 0.45 or risk veto fires
 - HOLD otherwise
-- Use 8-12% size only for highest-conviction setups; 3-5% for moderate conviction
-- Always respect the Risk Manager's veto"""
+- Sizing is conviction-driven: 3-5% for moderate conviction, 10-25% for strong, 25-50% for highest conviction (multiple agents aligned, 3+ consecutive beats, squeeze setup, etc.)
+- Be aggressive — the goal is maximum return. Concentrate in the best setups.
+- Always respect the Risk Manager's veto (stop-loss / drawdown override)"""
 
 
 def _get_weights(risk_off: bool, vix: float = None, spy_above_200d: bool = None) -> dict:
@@ -427,7 +429,8 @@ async def run_full_committee(market: str = 'US') -> list:
         return []
 
     market_cfg = MARKETS.get(market.upper(), MARKETS["US"])
-    tickers    = market_cfg["watchlist"]
+    # Use dynamic screener — expands US to 200+ tickers per session (free pre-filter)
+    tickers    = get_watchlist(market, max_tickers=250)
 
     try:
         portfolio = await get_portfolio(market)

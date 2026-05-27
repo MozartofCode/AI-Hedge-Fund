@@ -17,29 +17,16 @@ MARKETS = {
         "open":            dtime(9, 30),
         "close":           dtime(16, 0),
         "slack_notify":    True,
+        # Static watchlist is the fallback seed — the screener dynamically
+        # expands this to 200+ tickers per session using FMP + yfinance.
+        # See backend/screener.py for the full seed list and dynamic logic.
         "watchlist": [
-            # ── Mega-cap tech / AI infrastructure ────────────────────────────
-            "AAPL", "NVDA", "MSFT", "GOOGL", "META",
-            "AMD", "ARM", "AVGO", "SMCI",
-            # ── Cloud / cybersecurity / software ─────────────────────────────
-            "CRWD", "NET", "DDOG", "PLTR", "GTLB",
-            "APP", "TTD", "MNDY", "DUOL",
-            # ── Consumer / e-commerce ─────────────────────────────────────────
-            "AMZN", "TSLA", "CELH", "HIMS", "CAVA",
-            # ── Fintech / crypto ──────────────────────────────────────────────
-            "HOOD", "SOFI", "AFRM", "UPST", "NU",
-            "COIN", "MARA", "MSTR",
-            # ── Space / deep tech / AI hardware ──────────────────────────────
-            "RKLB", "LUNR", "IONQ", "JOBY", "ASTS",
-            "SOUN", "RXRX",
-            # ── Financials ───────────────────────────────────────────────────
-            "JPM", "GS",
-            # ── Healthcare / biotech ─────────────────────────────────────────
-            "LLY", "RDDT", "AXON",
-            # ── Energy ───────────────────────────────────────────────────────
-            "XOM", "CLSK",
-            # ── Broad market ─────────────────────────────────────────────────
-            "SPY", "QQQ",
+            "AAPL","NVDA","MSFT","GOOGL","META","AMD","ARM","AVGO","SMCI",
+            "CRWD","NET","DDOG","PLTR","GTLB","APP","TTD","MNDY","DUOL","SOUN",
+            "RKLB","LUNR","IONQ","JOBY","ASTS","RXRX",
+            "AMZN","TSLA","CELH","HIMS","CAVA","LLY","RDDT","AXON",
+            "HOOD","SOFI","AFRM","UPST","NU","COIN","MARA","MSTR",
+            "JPM","GS","XOM","CLSK","SPY","QQQ",
         ],
     },
     "BR": {
@@ -53,22 +40,13 @@ MARKETS = {
         "open":            dtime(10, 0),
         "close":           dtime(17, 30),
         "slack_notify":    False,
+        # Full seed list lives in backend/screener.py (_BR_SEEDS)
         "watchlist": [
-            "PETR4.SA",   # Petrobras — oil giant, high volatility
-            "VALE3.SA",   # Vale — iron ore, global commodity play
-            "ITUB4.SA",   # Itaú Unibanco — largest private bank
-            "BBDC4.SA",   # Bradesco — banking
-            "ABEV3.SA",   # Ambev — beverages
-            "WEGE3.SA",   # WEG — industrial motors, exports heavily
-            "RENT3.SA",   # Localiza — car rental leader
-            "B3SA3.SA",   # B3 exchange itself
-            "SUZB3.SA",   # Suzano — pulp & paper
-            "MGLU3.SA",   # Magazine Luiza — e-commerce
-            "RADL3.SA",   # Raia Drogasil — pharmacy chain
-            "CASH3.SA",   # Méliuz — fintech/cashback
-            "IFCM3.SA",   # Infracommerce — e-commerce tech
-            "INTB3.SA",   # Intelbras — tech hardware
-            "MXRF11.SA",  # Maxi Renda — REIT (FII)
+            "PETR4.SA","VALE3.SA","ITUB4.SA","BBDC4.SA","ABEV3.SA",
+            "WEGE3.SA","RENT3.SA","B3SA3.SA","SUZB3.SA","MGLU3.SA",
+            "RADL3.SA","CASH3.SA","IFCM3.SA","INTB3.SA","MXRF11.SA",
+            "PRIO3.SA","CSAN3.SA","EMBR3.SA","BEEF3.SA","CPLE6.SA",
+            "VIVT3.SA","NTCO3.SA","SOMA3.SA","ARZZ3.SA","SRNA3.SA",
         ],
     },
     "AR": {
@@ -82,23 +60,10 @@ MARKETS = {
         "open":            dtime(11, 0),
         "close":           dtime(17, 0),
         "slack_notify":    False,
-        # Using NYSE/NASDAQ-listed Argentine ADRs for best data quality
+        # NYSE/NASDAQ-listed Argentine ADRs — full seed list in backend/screener.py
         "watchlist": [
-            "YPF",    # YPF SA — oil & gas, high beta
-            "GGAL",   # Grupo Financiero Galicia — banking
-            "BMA",    # Banco Macro — retail banking
-            "PAM",    # Pampa Energía — power generation
-            "LOMA",   # Loma Negra — cement
-            "TGS",    # Transportadora de Gas del Sur
-            "CEPU",   # Central Puerto — electricity
-            "SUPV",   # Grupo Supervielle — fintech bank
-            "DESP",   # Despegar — Latin America travel
-            "BIOX",   # Bioceres — ag-biotech, 10x candidate
-            "GLOB",   # Globant — tech/software
-            "MELI",   # MercadoLibre — Latin America Amazon
-            "ARCO",   # Arcos Dorados — McDonald's franchisee
-            "IRS",    # IRSA — real estate
-            "CAAP",   # Corporación América — airports
+            "YPF","GGAL","BMA","PAM","LOMA","TGS","CEPU","SUPV","DESP","BIOX",
+            "GLOB","MELI","ARCO","IRS","CAAP","IRCP","EDN","COME","AGRO",
         ],
     },
     "TR": {
@@ -112,22 +77,12 @@ MARKETS = {
         "open":            dtime(10, 0),
         "close":           dtime(18, 0),
         "slack_notify":    False,
+        # Full seed list in backend/screener.py (_TR_SEEDS)
         "watchlist": [
-            "THYAO.IS",  # Turkish Airlines — travel rebound
-            "ASELS.IS",  # Aselsan — defense electronics
-            "SISE.IS",   # Şişecam — glass & chemicals
-            "KCHOL.IS",  # Koç Holding — conglomerate
-            "GARAN.IS",  # Garanti BBVA — banking
-            "AKBNK.IS",  # Akbank — banking
-            "BIMAS.IS",  # BIM — discount retail
-            "EREGL.IS",  # Ereğli Steel — steel producer
-            "FROTO.IS",  # Ford Otosan — auto manufacturing
-            "TCELL.IS",  # Turkcell — telecom
-            "TOASO.IS",  # Tofaş — Fiat Türkiye
-            "PGSUS.IS",  # Pegasus Airlines — budget carrier
-            "EKGYO.IS",  # Emlak Konut — REIT
-            "KOZAL.IS",  # Koza Altın — gold mining
-            "SAHOL.IS",  # Sabancı Holding — conglomerate
+            "THYAO.IS","ASELS.IS","SISE.IS","KCHOL.IS","GARAN.IS",
+            "AKBNK.IS","BIMAS.IS","EREGL.IS","FROTO.IS","TCELL.IS",
+            "TOASO.IS","PGSUS.IS","EKGYO.IS","KOZAL.IS","SAHOL.IS",
+            "TUPRS.IS","ARCLK.IS","SODA.IS","TAVHL.IS","ULKER.IS",
         ],
     },
     "NG": {
@@ -141,23 +96,12 @@ MARKETS = {
         "open":            dtime(10, 30),
         "close":           dtime(14, 30),
         "slack_notify":    False,
-        # NGX tickers — data availability varies by broker/source
+        # Full seed list in backend/screener.py (_NG_SEEDS)
         "watchlist": [
-            "MTNN.LG",       # MTN Nigeria — telco giant
-            "DANGCEM.LG",    # Dangote Cement — largest cement producer
-            "GTCO.LG",       # Guaranty Trust — banking
-            "ZENITHBANK.LG", # Zenith Bank — tier-1 bank
-            "AIRTELAFRI.LG", # Airtel Africa — telecom
-            "ACCESSCORP.LG", # Access Holdings — banking
-            "BUACEMENT.LG",  # BUA Cement — second largest cement
-            "NB.LG",         # Nigerian Breweries — consumer staples
-            "UBA.LG",        # United Bank for Africa — pan-African banking
-            "SEPLAT.LG",     # Seplat Energy — oil & gas
-            "FBNH.LG",       # First Bank Nigeria — legacy bank
-            "STANBIC.LG",    # Stanbic IBTC — financial services
-            "WAPCO.LG",      # Lafarge WAPCO — cement
-            "DANGSUGAR.LG",  # Dangote Sugar — consumer goods
-            "FIDSON.LG",     # Fidson Healthcare — pharma
+            "MTNN.LG","DANGCEM.LG","GTCO.LG","ZENITHBANK.LG","AIRTELAFRI.LG",
+            "ACCESSCORP.LG","BUACEMENT.LG","NB.LG","UBA.LG","SEPLAT.LG",
+            "FBNH.LG","STANBIC.LG","WAPCO.LG","DANGSUGAR.LG","FIDSON.LG",
+            "OANDO.LG","NESTLE.LG","PRESCO.LG","TOTAL.LG","CONOIL.LG",
         ],
     },
 }

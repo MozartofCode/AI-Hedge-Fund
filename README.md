@@ -50,18 +50,15 @@ The committee runs independently for 5 exchanges, each with its own paper portfo
 
 Slack notifications are US-only. All other markets trade silently.
 
-### US Watchlist (~50 tickers)
-Expanded beyond blue-chips to hunt 10X opportunities across five themes:
+### Dynamic Watchlist (US: up to 250 tickers per session)
+The US committee doesn't use a fixed list. Before each session `backend/screener.py` runs a **free pre-screen**:
+1. FMP screener — pulls NYSE/NASDAQ stocks by volume + beta + price thresholds
+2. FMP gainers + most-active — today's momentum leaders
+3. Seed list — ~100 curated high-conviction tickers always included
 
-| Theme | Tickers |
-|---|---|
-| AI / Mega-cap | AAPL, NVDA, MSFT, GOOGL, META, AMD, ARM, AVGO, SMCI |
-| Cloud / SaaS / Cyber | CRWD, NET, DDOG, PLTR, GTLB, APP, TTD, MNDY, DUOL, SOUN |
-| Space / Deep Tech / Quantum | RKLB, LUNR, IONQ, JOBY, ASTS, RXRX |
-| Consumer / Health | AMZN, TSLA, CELH, HIMS, CAVA, LLY, RDDT, AXON |
-| Fintech / Crypto | HOOD, SOFI, AFRM, UPST, NU, COIN, MARA, MSTR |
-| Energy / Clean Tech | XOM, CLSK |
-| Financials / Broad | JPM, GS, SPY, QQQ |
+This scans the full US market for free (no AI tokens spent on pre-filtering), then the AI committee only runs on the top ~250 hottest setups each session.
+
+Non-US markets use expanded seed lists of 20 tickers each (FMP/Finnhub coverage of .SA/.IS/.LG is limited).
 
 ---
 
@@ -194,14 +191,13 @@ Paper portfolio rows for all 5 markets are seeded idempotently on every boot.
 
 | Rule | Value | Notes |
 |---|---|---|
-| Max open positions | 25 | Run a full diversified book |
-| Max single position size | 12% of portfolio | Hard ceiling |
-| ATR-adjusted size cap | 5% (ATR >4%) / 8% (ATR >2.5%) | Keeps dollar risk consistent per trade |
-| Stop-loss | −8% from entry | Hard exit |
-| Trailing stop | −20% from 60-day high | Activates once position is up +20% |
-| Profit target | +75% | Take profits; Chairman may override for strong compounders |
-| Max portfolio drawdown | −15% | Blocks all new BUYs until recovery |
-| Max positions in same sector | 5 | Allows thematic concentration in hot sectors |
+| Max open positions | Unlimited | No cap — hold as many as conviction demands |
+| Max single position size | 50% of portfolio | Go big on the best setups |
+| Stop-loss | −8% from entry | Only hard guardrail — cut losers fast |
+| Trailing stop | −15% from 60-day high | Activates once position is up +30% — locks in gains |
+| Profit target | +500% | Let winners run to 5X before forced exit |
+| Max portfolio drawdown | −50% | Only blocks buys on catastrophic drawdown |
+| Sector concentration | Unlimited | No restriction — concentrate in hot themes |
 
 ---
 
