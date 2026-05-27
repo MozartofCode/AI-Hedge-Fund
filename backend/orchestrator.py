@@ -22,12 +22,12 @@ _BASE_WEIGHTS = {
 }
 
 # ── Decision thresholds ───────────────────────────────────────────────────────
-BUY_THRESHOLD  = 0.60
-SELL_THRESHOLD = 0.35
+BUY_THRESHOLD  = 0.52   # lowered from 0.60 — trigger on moderate conviction
+SELL_THRESHOLD = 0.45   # raised from 0.35 — sell faster when signal fades, more churn
 
 # ── Conviction-based position sizing ─────────────────────────────────────────
-_BASE_POSITION_PCT = 5.0
-_MAX_POSITION_PCT  = 12.0   # raised to 12% for highest-conviction plays
+_BASE_POSITION_PCT = 3.0    # smaller base — more positions can coexist
+_MAX_POSITION_PCT  = 10.0   # cap per trade
 
 CHAIRMAN_SYSTEM = """You are the Chairman of an AI investment committee. Five specialist agents have voted on this stock.
 
@@ -96,11 +96,20 @@ def _action_score(action: str, confidence: float) -> float:
 
 
 def _weighted_score(votes: list, weights: dict) -> float:
-    total_w = sum(weights.values())
-    raw = sum(
-        weights.get(v.get("agent"), 0) * _action_score(v.get("action", "HOLD"), float(v.get("confidence", 0.5)))
-        for v in votes
+    # Exclude agents that errored — their signature is action=HOLD + confidence=0.0
+    # This is critical for non-US markets where FMP/Finnhub coverage is sparse;
+    # failed agents should not drag the score toward 0.5 and kill valid signals.
+    active = [
+        v for v in votes
         if v.get("agent") in weights
+        and not (v.get("action") == "HOLD" and float(v.get("confidence", 1.0)) == 0.0)
+    ]
+    if not active:
+        return 0.5   # all agents failed — neutral
+    total_w = sum(weights.get(v["agent"], 0) for v in active)
+    raw = sum(
+        weights.get(v["agent"], 0) * _action_score(v.get("action", "HOLD"), float(v.get("confidence", 0.5)))
+        for v in active
     )
     return round(raw / total_w, 4) if total_w > 0 else 0.5
 

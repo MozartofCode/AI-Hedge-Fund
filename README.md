@@ -45,10 +45,23 @@ The committee runs independently for 5 exchanges, each with its own paper portfo
 | 🇺🇸 US | NYSE / NASDAQ | USD | $1,000,000 | 10:00, 12:30, 15:00 ET |
 | 🇧🇷 Brazil | B3 | BRL | R$5,000,000 | 11:00, 13:30, 16:00 BRT |
 | 🇦🇷 Argentina | BYMA / ADRs | USD | $500,000 | 12:00, 14:00, 16:30 ART |
-| 🇹🇷 Turkey | BIST | TRY | ₺30,000,000 | 10:30, 13:00, 16:30 TRT |
-| 🇳🇬 Nigeria | NGX | NGN | ₦500,000,000 | 11:00, 12:30, 13:30 WAT |
+| 🇹🇷 Turkey | BIST | TRY | ₺35,000,000 | 10:30, 13:00, 16:30 TRT |
+| 🇳🇬 Nigeria | NGX | NGN | ₦1,500,000,000 | 11:00, 12:30, 13:30 WAT |
 
 Slack notifications are US-only. All other markets trade silently.
+
+### US Watchlist (~50 tickers)
+Expanded beyond blue-chips to hunt 10X opportunities across five themes:
+
+| Theme | Tickers |
+|---|---|
+| AI / Mega-cap | AAPL, NVDA, MSFT, GOOGL, META, AMD, ARM, AVGO, SMCI |
+| Cloud / SaaS / Cyber | CRWD, NET, DDOG, PLTR, GTLB, APP, TTD, MNDY, DUOL, SOUN |
+| Space / Deep Tech / Quantum | RKLB, LUNR, IONQ, JOBY, ASTS, RXRX |
+| Consumer / Health | AMZN, TSLA, CELH, HIMS, CAVA, LLY, RDDT, AXON |
+| Fintech / Crypto | HOOD, SOFI, AFRM, UPST, NU, COIN, MARA, MSTR |
+| Energy / Clean Tech | XOM, CLSK |
+| Financials / Broad | JPM, GS, SPY, QQQ |
 
 ---
 
@@ -181,14 +194,14 @@ Paper portfolio rows for all 5 markets are seeded idempotently on every boot.
 
 | Rule | Value | Notes |
 |---|---|---|
-| Max open positions | 10 | |
+| Max open positions | 25 | Run a full diversified book |
 | Max single position size | 12% of portfolio | Hard ceiling |
 | ATR-adjusted size cap | 5% (ATR >4%) / 8% (ATR >2.5%) | Keeps dollar risk consistent per trade |
 | Stop-loss | −8% from entry | Hard exit |
 | Trailing stop | −20% from 60-day high | Activates once position is up +20% |
 | Profit target | +75% | Take profits; Chairman may override for strong compounders |
-| Max portfolio drawdown | −12% | Blocks all new BUYs until recovery |
-| Max positions in same sector | 3 | Prevents thematic over-concentration |
+| Max portfolio drawdown | −15% | Blocks all new BUYs until recovery |
+| Max positions in same sector | 5 | Allows thematic concentration in hot sectors |
 
 ---
 

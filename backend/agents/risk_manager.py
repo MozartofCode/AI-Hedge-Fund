@@ -1,19 +1,19 @@
 import yfinance as yf
 
-MAX_POSITIONS             = 10     # raised 7→10 — more room to hunt winners
-MAX_SINGLE_POSITION_PCT   = 12.0   # raised 10→12% for high-conviction plays
-MAX_DRAWDOWN_PCT          = 12.0   # slight breathing room
-MAX_SAME_SECTOR_POSITIONS = 3      # raised 2→3 — allow thematic concentration
+MAX_POSITIONS             = 25     # raised 10→25 — run a full diversified portfolio
+MAX_SINGLE_POSITION_PCT   = 12.0   # hard ceiling per trade
+MAX_DRAWDOWN_PCT          = 15.0   # allow more breathing room in volatile markets
+MAX_SAME_SECTOR_POSITIONS = 5      # raised 3→5 — allow thematic concentration in hot sectors
 STOP_LOSS_PCT             = 8.0    # exit if down 8% from entry
-PROFIT_TARGET_PCT         = 75.0   # raised 20→75% — let winners RUN (don't kill 10X plays at +20%)
+PROFIT_TARGET_PCT         = 75.0   # let winners RUN — don't kill 10X plays at +20%
 TRAILING_START_PCT        = 20.0   # start trailing once position is up 20%
 TRAILING_STOP_TRAIL       = 20.0   # sell if price falls 20% from its 60-day high
-BASE_POSITION_PCT         = 5.0
+BASE_POSITION_PCT         = 3.0    # smaller base — fits more positions
 MAX_CONVICTION_PCT        = 12.0   # ceiling for high-conviction trades
 
-# Sector map — expanded 25-ticker watchlist
+# Sector map — 50-ticker US watchlist + non-US ADRs
 _SECTOR_MAP = {
-    # Mega-cap tech / AI
+    # Mega-cap tech / AI infrastructure
     "AAPL":  "Technology",
     "NVDA":  "Technology",
     "MSFT":  "Technology",
@@ -29,22 +29,63 @@ _SECTOR_MAP = {
     "NET":   "Technology",
     "DDOG":  "Technology",
     "PLTR":  "Technology",
-    # Consumer
+    "GTLB":  "Technology",
+    "APP":   "Technology",
+    "TTD":   "Technology",
+    "MNDY":  "Technology",
+    "DUOL":  "Technology",
+    "SOUN":  "Technology",
+    # Space / deep tech / quantum
+    "RKLB":  "Aerospace & Defense",
+    "LUNR":  "Aerospace & Defense",
+    "IONQ":  "Technology",
+    "JOBY":  "Aerospace & Defense",
+    "ASTS":  "Technology",
+    "RXRX":  "Healthcare",
+    # Consumer / e-commerce
     "AMZN":  "Consumer Discretionary",
     "TSLA":  "Consumer Discretionary",
-    # Financials / fintech
-    "JPM":   "Financials",
-    "GS":    "Financials",
+    "CELH":  "Consumer Staples",
+    "HIMS":  "Healthcare",
+    "CAVA":  "Consumer Discretionary",
+    # Fintech / crypto
     "HOOD":  "Financials",
     "SOFI":  "Financials",
+    "AFRM":  "Financials",
+    "UPST":  "Financials",
+    "NU":    "Financials",
+    "COIN":  "Financials",
+    "MARA":  "Financials",
     "MSTR":  "Financials",
+    # Financials
+    "JPM":   "Financials",
+    "GS":    "Financials",
     # Healthcare
-    "UNH":   "Healthcare",
     "LLY":   "Healthcare",
-    # Energy
+    # Social / community
+    "RDDT":  "Technology",
+    "AXON":  "Technology",
+    # Energy / clean tech
     "XOM":   "Energy",
+    "CLSK":  "Energy",
     # Broad market
     "SPY":   "Broad Market",
+    # Argentina ADRs
+    "YPF":   "Energy",
+    "GGAL":  "Financials",
+    "BMA":   "Financials",
+    "PAM":   "Energy",
+    "LOMA":  "Materials",
+    "TGS":   "Energy",
+    "CEPU":  "Utilities",
+    "SUPV":  "Financials",
+    "DESP":  "Consumer Discretionary",
+    "BIOX":  "Agriculture",
+    "GLOB":  "Technology",
+    "MELI":  "Consumer Discretionary",
+    "ARCO":  "Consumer Discretionary",
+    "IRS":   "Real Estate",
+    "CAAP":  "Industrials",
 }
 
 
