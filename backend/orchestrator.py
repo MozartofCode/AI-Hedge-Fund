@@ -30,17 +30,38 @@ SELL_THRESHOLD = 0.45   # raised from 0.35 — sell faster when signal fades, mo
 _BASE_POSITION_PCT = 3.0    # minimum size — conviction scaling drives higher
 _MAX_POSITION_PCT  = 50.0   # no artificial cap — go big on the best setups
 
-CHAIRMAN_SYSTEM = """You are the Chairman of an AI investment committee. Five specialist agents have voted on this stock.
+# ── Chairman prompt for scheduled committee runs (lean — no price targets) ────
+# Cost-optimised: only fires on BUY/SELL. Max ~300 output tokens.
+CHAIRMAN_SYSTEM = """You are the Chairman of an AI investment committee. Five agents voted on this stock.
+Write for a regular investor — plain English, no jargon. Be direct and specific.
 
-Write for a regular investor — plain English, no jargon, no acronyms. Be direct and specific.
-
-Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
+Return ONLY valid JSON — no markdown, no explanation:
 {
   "decision": "BUY" | "SELL" | "HOLD",
   "ticker": "...",
-  "position_size_pct": 0-12,
+  "position_size_pct": 0-50,
   "order_type": "market",
-  "chairman_rationale": "Exactly 3 bullet lines, each starting with the emoji and label shown:\n• 📈 Why: [The single most compelling reason for this decision — specific and concrete]\n• ⚠️ Risk: [The biggest thing that could go wrong — be honest]\n• 👀 Watch: [The one metric, event, or signal to monitor going forward]",
+  "chairman_rationale": "Exactly 3 bullet lines:\n• 📈 Why: [most compelling reason — specific]\n• ⚠️ Risk: [biggest thing that could go wrong]\n• 👀 Watch: [one metric or event to monitor]"
+}
+
+Rules:
+- BUY if score > 0.52 and no veto. SELL if score < 0.45 or risk veto. HOLD otherwise.
+- Sizing: 3-5% moderate conviction, 10-25% strong, 25-50% highest conviction (all agents aligned + squeeze setup + consecutive beats).
+- Be aggressive — maximise return. Concentrate in the best setups.
+- Always respect the Risk Manager's veto."""
+
+# ── Chairman prompt for on-demand analysis (full — includes price targets) ────
+# Used only in analyze_ticker() — user explicitly requested it, worth the tokens.
+CHAIRMAN_ANALYSIS_SYSTEM = """You are the Chairman of an AI investment committee. Five agents voted on this stock.
+Write for a regular investor — plain English, no jargon. Be direct and specific.
+
+Return ONLY valid JSON — no markdown, no explanation:
+{
+  "decision": "BUY" | "SELL" | "HOLD",
+  "ticker": "...",
+  "position_size_pct": 0-50,
+  "order_type": "market",
+  "chairman_rationale": "Exactly 3 bullet lines:\n• 📈 Why: [most compelling reason — specific]\n• ⚠️ Risk: [biggest thing that could go wrong]\n• 👀 Watch: [one metric or event to monitor]",
   "price_targets": {
     "1m":  0.00,
     "6m":  0.00,
@@ -49,21 +70,15 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
   "stop_loss": 0.00
 }
 
-Price target rules (use the current_price provided in the input):
-- Base targets on realistic upside/downside given the fundamentals, momentum, and macro backdrop
-- BUY decision: 1m should reflect near-term momentum, 6m/1y should reflect thesis fully playing out
-- SELL decision: targets should show expected decline
-- HOLD: targets should reflect a tight range around current price
-- stop_loss: the price level where you'd cut the position (typically 8-12% below current for BUY)
-- All values must be actual dollar prices, not percentages
+Price target rules (use current_price from input):
+- BUY: 1m = near-term momentum, 6m/1y = thesis playing out
+- SELL: show expected decline. HOLD: tight range around current price.
+- stop_loss: typically 8-12% below current for BUY. All values in actual dollars.
 
-Decision rules:
-- BUY if overall score > 0.52 and no risk veto
-- SELL if score < 0.45 or risk veto fires
-- HOLD otherwise
-- Sizing is conviction-driven: 3-5% for moderate conviction, 10-25% for strong, 25-50% for highest conviction (multiple agents aligned, 3+ consecutive beats, squeeze setup, etc.)
-- Be aggressive — the goal is maximum return. Concentrate in the best setups.
-- Always respect the Risk Manager's veto (stop-loss / drawdown override)"""
+Rules:
+- BUY if score > 0.52 and no veto. SELL if score < 0.45 or risk veto. HOLD otherwise.
+- Sizing: 3-5% moderate, 10-25% strong, 25-50% highest conviction.
+- Be aggressive — maximise return. Always respect the Risk Manager's veto."""
 
 
 def _get_weights(risk_off: bool, vix: float = None, spy_above_200d: bool = None) -> dict:
@@ -177,52 +192,55 @@ async def run_committee_for_ticker(
         decision      = "HOLD"
         position_size = 0.0
 
-    # ── Chairman rationale via Claude ─────────────────────────────────────────
-    chairman_input = {
-        "ticker":             ticker,
-        "market":             market.upper(),
-        "weighted_score":     score,
-        "risk_off":           risk_off,
-        "spy_above_200d":     spy_above_200d,
-        "active_weights":     weights,
-        "risk_manager_veto":  risk_vote.get("veto"),
-        "force_sell":         force_sell,
-        "take_profit":        take_profit,
-        "risk_manager_reason": risk_vote.get("reason"),
-        "preliminary_decision": decision,
-        "portfolio_context": {
-            "cash_available": round(portfolio.get("cash", 0), 2),
-            "total_value":    round(portfolio.get("total_value", 0), 2),
-            "open_positions": [p["ticker"] for p in portfolio.get("positions", [])],
-            "num_positions":  len(portfolio.get("positions", [])),
-        },
-        "agent_votes": [
-            {"agent": v.get("agent"), "action": v.get("action"),
-             "confidence": v.get("confidence"), "rationale": v.get("rationale")}
-            for v in agent_votes
-        ],
-    }
-    chairman_out = call_claude(
-        CHAIRMAN_SYSTEM,
-        f"Committee analysis: {json.dumps(chairman_input)}",
-        "chairman",
-        max_tokens=800,
-        model=CHAIRMAN_MODEL,
-    )
+    # ── Chairman rationale via Claude (only on BUY / SELL — skip HOLDs) ─────────
+    # HOLDs are ~85% of all tickers. Skipping Sonnet on HOLDs cuts costs ~80%.
+    final_decision = decision
+    final_size     = position_size
+    rationale      = f"HOLD — score {score:.2f} is between thresholds. No action."
 
-    final_decision = chairman_out.get("decision", decision)
-    # Hard-enforce risk manager rules
-    if risk_vote.get("veto") and final_decision == "BUY":
-        final_decision = "HOLD"
-    if (force_sell or take_profit) and final_decision != "SELL":
-        final_decision = "SELL"
-
-    try:
-        final_size = float(chairman_out.get("position_size_pct", position_size))
-    except (TypeError, ValueError):
-        final_size = position_size
-
-    rationale = chairman_out.get("chairman_rationale", "No rationale provided.")
+    if decision in ("BUY", "SELL") or force_sell or take_profit:
+        chairman_input = {
+            "ticker":              ticker,
+            "market":              market.upper(),
+            "weighted_score":      score,
+            "risk_off":            risk_off,
+            "spy_above_200d":      spy_above_200d,
+            "active_weights":      weights,
+            "risk_manager_veto":   risk_vote.get("veto"),
+            "force_sell":          force_sell,
+            "take_profit":         take_profit,
+            "risk_manager_reason": risk_vote.get("reason"),
+            "preliminary_decision": decision,
+            "portfolio_context": {
+                "cash_available": round(portfolio.get("cash", 0), 2),
+                "total_value":    round(portfolio.get("total_value", 0), 2),
+                "open_positions": [p["ticker"] for p in portfolio.get("positions", [])],
+                "num_positions":  len(portfolio.get("positions", [])),
+            },
+            "agent_votes": [
+                {"agent": v.get("agent"), "action": v.get("action"),
+                 "confidence": v.get("confidence"), "rationale": v.get("rationale")}
+                for v in agent_votes
+            ],
+        }
+        chairman_out = call_claude(
+            CHAIRMAN_SYSTEM,
+            f"Committee analysis: {json.dumps(chairman_input)}",
+            "chairman",
+            max_tokens=350,   # lean prompt — no price targets needed for scheduled runs
+            model=CHAIRMAN_MODEL,
+        )
+        final_decision = chairman_out.get("decision", decision)
+        # Hard-enforce risk manager rules
+        if risk_vote.get("veto") and final_decision == "BUY":
+            final_decision = "HOLD"
+        if (force_sell or take_profit) and final_decision != "SELL":
+            final_decision = "SELL"
+        try:
+            final_size = float(chairman_out.get("position_size_pct", position_size))
+        except (TypeError, ValueError):
+            final_size = position_size
+        rationale = chairman_out.get("chairman_rationale", "No rationale provided.")
 
     # ── Persist to DB ─────────────────────────────────────────────────────────
     async with AsyncSessionLocal() as db:
@@ -376,10 +394,10 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
         ],
     }
     chairman_out = call_claude(
-        CHAIRMAN_SYSTEM,
+        CHAIRMAN_ANALYSIS_SYSTEM,
         f"Committee analysis: {json.dumps(chairman_input)}",
         "chairman",
-        max_tokens=1000,
+        max_tokens=600,   # on-demand analysis — include price targets, worth the tokens
         model=CHAIRMAN_MODEL,
     )
 
@@ -429,8 +447,10 @@ async def run_full_committee(market: str = 'US') -> list:
         return []
 
     market_cfg = MARKETS.get(market.upper(), MARKETS["US"])
-    # Use dynamic screener — expands US to 200+ tickers per session (free pre-filter)
-    tickers    = get_watchlist(market, max_tickers=250)
+    # Dynamic screener — free pre-filter, narrows full market to top candidates.
+    # Capped at 150 to stay within ~$4/day Claude budget (skip-HOLD optimisation
+    # means only ~15% of these actually trigger a Sonnet call).
+    tickers    = get_watchlist(market, max_tickers=150)
 
     try:
         portfolio = await get_portfolio(market)
