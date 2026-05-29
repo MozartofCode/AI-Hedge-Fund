@@ -555,11 +555,35 @@ function SearchBox({ onRun, loading }) {
   )
 }
 
+// ── Time-based greeting (America/New_York = EST/EDT) ─────────────────────────
+function useGreeting() {
+  const estHour = parseInt(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: 'numeric',
+      hour12: false,
+    }).format(new Date()),
+    10
+  )
+  if (estHour >= 5  && estHour < 12) return 'Good morning'
+  if (estHour >= 12 && estHour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
+// ── Quick-start suggestion cards ─────────────────────────────────────────────
+const SUGGESTIONS = [
+  { ticker: 'NVDA', label: 'Deep dive on NVDA',       sub: 'AI chip leader — still room to run?' },
+  { ticker: 'TSLA', label: 'Is TSLA a buy right now?', sub: 'Valuation, sentiment & technicals'   },
+  { ticker: 'RKLB', label: 'Analyze RKLB',             sub: 'Space-tech underdog — upside play?'  },
+  { ticker: 'AAPL', label: "Apple's earnings outlook", sub: 'Services growth vs hardware cycle'   },
+]
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function Analyze() {
   const [loading, setLoading] = useState(false)
   const [result,  setResult]  = useState(null)
   const [error,   setError]   = useState(null)
+  const greeting = useGreeting()
 
   const run = async (sym) => {
     if (!sym) return
@@ -594,26 +618,50 @@ export default function Analyze() {
     )
   }
 
-  // ── Landing view (ChatGPT-style) ──
+  // ── Landing view (Claude-style) ──
   return (
-    <div className="min-h-[calc(100vh-56px)] flex flex-col items-center justify-center px-4 py-12">
-      <div className="w-full max-w-xl space-y-8 text-center">
-        {/* Hero */}
-        <div className="space-y-3">
-          <p className="text-gray-500 text-sm max-w-sm mx-auto leading-relaxed">
-            5 AI agents debate every stock. Ask about any ticker or company.
+    <div className="min-h-[calc(100vh-56px)] flex flex-col items-center justify-center px-4 pb-16 pt-8">
+      <div className="w-full max-w-2xl flex flex-col items-center gap-10">
+
+        {/* ── Greeting ── */}
+        <div className="text-center space-y-3">
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-gradient-to-br from-white via-gray-100 to-gray-400 bg-clip-text text-transparent">
+            {greeting}, Investor.
+          </h1>
+          <p className="text-gray-500 text-base max-w-sm mx-auto leading-relaxed">
+            5 AI agents debate every stock. What would you like to analyze today?
           </p>
         </div>
 
-        {/* Search */}
-        <SearchBox onRun={run} loading={loading} />
+        {/* ── Search ── */}
+        <div className="w-full">
+          <SearchBox onRun={run} loading={loading} />
+        </div>
 
-        {/* Error */}
+        {/* ── Suggestion cards ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
+          {SUGGESTIONS.map(s => (
+            <button
+              key={s.ticker}
+              onClick={() => run(s.ticker)}
+              className="text-left px-4 py-3.5 rounded-2xl border border-white/8 bg-gray-900/50
+                         hover:bg-gray-800/70 hover:border-white/15 transition-all group"
+            >
+              <div className="text-sm font-semibold text-gray-200 group-hover:text-white leading-snug">
+                {s.label}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5 leading-snug">{s.sub}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* ── Error ── */}
         {error && (
-          <div className="card border-red-500/30 bg-red-500/5 text-red-400 text-sm p-3 text-left">
+          <div className="w-full rounded-xl border border-red-500/30 bg-red-500/5 text-red-400 text-sm p-3 text-left">
             ⚠️ {error}
           </div>
         )}
+
       </div>
     </div>
   )
