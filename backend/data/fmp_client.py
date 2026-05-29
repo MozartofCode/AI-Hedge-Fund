@@ -9,12 +9,25 @@ _BASE = "https://financialmodelingprep.com/api/v3"
 
 
 def _get(endpoint: str, params: dict = None):
+    """
+    Make a GET request to FMP v3 API.
+    Returns the parsed JSON or {} / [] on error.
+    Logs clearly when FMP returns an error message so Railway logs surface issues.
+    """
     try:
-        p = params or {}
+        p = dict(params or {})   # copy so we never mutate caller's dict
         p["apikey"] = _FMP_KEY
         resp = httpx.get(f"{_BASE}/{endpoint}", params=p, timeout=30)
-        return resp.json()
-    except Exception:
+        data = resp.json()
+        # FMP returns {"Error Message": "..."} when the key is invalid or
+        # the endpoint is not available on the current plan.
+        if isinstance(data, dict) and ("Error Message" in data or "message" in data):
+            msg = data.get("Error Message") or data.get("message", "unknown FMP error")
+            print(f"[FMP] /{endpoint} → error: {msg}")
+            return {}
+        return data
+    except Exception as e:
+        print(f"[FMP] /{endpoint} → exception: {e}")
         return {}
 
 
@@ -23,18 +36,21 @@ def get_profile(ticker: str) -> dict:
     return data[0] if isinstance(data, list) and data else {}
 
 
-def get_income_statement(ticker: str, limit: int = 4) -> list:
-    data = _get(f"income-statement/{ticker}", {"limit": limit})
+def get_income_statement(ticker: str, limit: int = 8) -> list:
+    """Quarterly income statements — needed for QoQ/YoY acceleration metrics."""
+    data = _get(f"income-statement/{ticker}", {"period": "quarter", "limit": limit})
     return data if isinstance(data, list) else []
 
 
-def get_balance_sheet(ticker: str, limit: int = 2) -> list:
-    data = _get(f"balance-sheet-statement/{ticker}", {"limit": limit})
+def get_balance_sheet(ticker: str, limit: int = 4) -> list:
+    """Quarterly balance sheets."""
+    data = _get(f"balance-sheet-statement/{ticker}", {"period": "quarter", "limit": limit})
     return data if isinstance(data, list) else []
 
 
-def get_cash_flow(ticker: str, limit: int = 4) -> list:
-    data = _get(f"cash-flow-statement/{ticker}", {"limit": limit})
+def get_cash_flow(ticker: str, limit: int = 8) -> list:
+    """Quarterly cash flow statements."""
+    data = _get(f"cash-flow-statement/{ticker}", {"period": "quarter", "limit": limit})
     return data if isinstance(data, list) else []
 
 

@@ -577,6 +577,8 @@ def get_vote(ticker: str) -> dict:
         return result
 
     except Exception as e:
+        import traceback
+        print(f"[fundamentalist] {ticker} FAILED: {e}\n{traceback.format_exc()}")
         return {
             "agent": "fundamentalist", "ticker": ticker,
             "action": "HOLD", "confidence": 0.0,

@@ -9,6 +9,7 @@ anthropic
 apscheduler
 python-dotenv
 pandas
+numpy
 pytz
 psycopg2-binary
 yfinance
