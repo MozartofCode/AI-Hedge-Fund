@@ -237,6 +237,23 @@ def get_vote(ticker: str) -> dict:
             f"News/sentiment analysis for {ticker}: {json.dumps(market_data)}",
             "newshound",
         )
+        # Append raw sentiment fields so the frontend can render the
+        # "Noteworthy Considerations" section without a second API call.
+        result.update({
+            "news_sentiment_score":   market_data.get("news_sentiment_score"),
+            "article_count_14d":      market_data.get("article_count_14d"),
+            "consecutive_beats":      market_data.get("consecutive_beats"),
+            "insider_mspr":           market_data.get("insider_mspr"),
+            "squeeze_risk_score":     market_data.get("squeeze_risk_score"),
+            "sentiment_divergence":   market_data.get("sentiment_divergence"),
+            "unusual_call_activity":  market_data.get("unusual_call_activity"),
+            "call_vol_to_oi":         market_data.get("call_vol_to_oi"),
+            "short_interest_pct":     market_data.get("short_interest_pct"),
+            "days_to_cover":          market_data.get("days_to_cover"),
+            "analyst_upgrades_30d":   market_data.get("analyst_upgrades_30d"),
+            "analyst_downgrades_30d": market_data.get("analyst_downgrades_30d"),
+            "recent_headlines":       market_data.get("recent_headlines", [])[:5],
+        })
         _cache[ticker] = {"ts": time.time(), "data": result}
         return result
     except Exception as e:

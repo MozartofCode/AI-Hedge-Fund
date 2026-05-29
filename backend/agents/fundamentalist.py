@@ -2,16 +2,126 @@
 Fundamentalist agent — FMP financial data + Claude analysis.
 Round 3 additions: revenue acceleration, EPS acceleration, gross margin expansion YoY,
 FCF inflection detection, R&D intensity, cash-to-debt ratio.
+Round 4 additions: trust-weighted analyst consensus (winsorized), bootstrap CI,
+DCF fair value from FMP, valuation signal (Strong Buy → Strong Sell).
 """
 import json
 import time
+import numpy as np
 from datetime import datetime
 from backend.agents.base_agent import call_claude
 from backend.data.fmp_client import (
     get_profile, get_income_statement, get_balance_sheet,
     get_cash_flow, get_analyst_ratings, get_earnings_calendar,
-    get_analyst_price_target,
+    get_analyst_price_target, get_analyst_price_targets, get_dcf,
 )
+
+# ── Institution trust weights (from valuation engine file) ───────────────────
+# Higher = more track-record credibility. Used to weight individual price targets.
+_TRUST = {
+    "Goldman Sachs": 1.30, "Goldman": 1.30,
+    "Bank of America": 1.25, "BofA": 1.25, "Merrill Lynch": 1.25,
+    "Morgan Stanley": 1.20,
+    "JPMorgan": 1.15, "J.P. Morgan": 1.15, "JP Morgan": 1.15,
+    "Evercore": 1.10, "Evercore ISI": 1.10,
+    "UBS": 1.10,
+    "Barclays": 1.05,
+    "Citigroup": 1.00, "Citi": 1.00,
+    "Deutsche Bank": 0.95,
+    "Wells Fargo": 0.90, "RBC": 0.90, "Royal Bank": 0.90,
+    "Piper Sandler": 0.88, "Cowen": 0.88, "Jefferies": 0.88,
+    "KeyBanc": 0.80, "Wedbush": 0.85, "Needham": 0.85,
+}
+
+
+def _winsorize(arr, lo=0.05, hi=0.95):
+    a = np.array(arr, dtype=float)
+    return np.clip(a, np.quantile(a, lo), np.quantile(a, hi))
+
+
+def _bootstrap_wmean(vals, wts, n=1000, seed=42):
+    rng = np.random.default_rng(seed)
+    v, w = np.array(vals, dtype=float), np.array(wts, dtype=float)
+    boots = []
+    for _ in range(n):
+        idx = rng.choice(len(v), size=len(v), replace=True)
+        sw = w[idx]; sw = sw / sw.sum()
+        boots.append(float(np.dot(v[idx], sw)))
+    return float(np.mean(boots)), float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5))
+
+
+def _ws_consensus(indiv_targets: list, spot: float, consensus_fallback: dict) -> dict:
+    """
+    Trust-weighted, winsorized Wall Street analyst consensus with bootstrap CI.
+    Mirrors the logic from the Fair Value Valuation Engine (file.py).
+    """
+    pts, wts = [], []
+    for t in indiv_targets[:20]:
+        pt = float(t.get("adjPriceTarget") or t.get("priceTarget") or 0)
+        if pt <= 0:
+            continue
+        firm = t.get("analystCompany", "")
+        tw = 1.0
+        for k, v in _TRUST.items():
+            if k.lower() in firm.lower():
+                tw = v
+                break
+        pts.append(pt)
+        wts.append(tw)
+
+    if len(pts) < 3:
+        # Fallback to FMP consensus when not enough individual targets
+        cons = float(consensus_fallback.get("targetConsensus") or 0)
+        hi   = float(consensus_fallback.get("targetHigh") or 0)
+        lo   = float(consensus_fallback.get("targetLow") or 0)
+        return {
+            "ws_price":     round(cons, 2) if cons > 0 else None,
+            "ws_price_high": round(hi, 2) if hi > 0 else None,
+            "ws_price_low":  round(lo, 2) if lo > 0 else None,
+            "ws_upside_pct": round((cons - spot) / spot * 100, 2) if spot > 0 and cons > 0 else None,
+            "ws_ci_lo": None, "ws_ci_hi": None,
+        }
+
+    wins = _winsorize(pts)
+    w_arr = np.array(wts); w_arr = w_arr / w_arr.sum()
+    ws = float(np.dot(wins, w_arr))
+    _, ci_lo, ci_hi = _bootstrap_wmean(wins, w_arr)
+
+    return {
+        "ws_price":      round(ws, 2),
+        "ws_price_high": round(float(np.array(pts).max()), 2),
+        "ws_price_low":  round(float(np.array(pts).min()), 2),
+        "ws_upside_pct": round((ws - spot) / spot * 100, 2) if spot > 0 else None,
+        "ws_ci_lo": round(ci_lo, 2),
+        "ws_ci_hi": round(ci_hi, 2),
+    }
+
+
+def _valuation_signal(ws_price, spot, ci_lo=None, ci_hi=None, dcf_price=None) -> str:
+    """
+    Signal based on upside from spot + bootstrap confidence interval.
+    Mirrors the signal() function from the Fair Value Valuation Engine.
+    """
+    # Use DCF as tiebreaker when WS not available
+    fv = ws_price or dcf_price
+    if not fv or not spot or spot <= 0:
+        return "N/A"
+
+    upside = (fv - spot) / spot * 100
+
+    # Statistically strong: spot is outside the 95% CI
+    if ci_lo is not None and spot < ci_lo:
+        return "STRONG BUY"
+    if ci_hi is not None and spot > ci_hi:
+        return "STRONG SELL"
+
+    if upside > 20:   return "STRONG BUY"
+    if upside > 10:   return "BUY"
+    if upside > 3:    return "OUTPERFORM"
+    if upside < -20:  return "STRONG SELL"
+    if upside < -10:  return "SELL"
+    if upside < -3:   return "UNDERPERFORM"
+    return "HOLD"
 
 # 2-hour cache per ticker — FMP data changes at most once per quarter
 _cache: dict = {}
@@ -90,24 +200,28 @@ Prefer SELL with low confidence over HOLD when bearish. Reserve HOLD for genuine
 
 
 def _get_fundamental_data(ticker: str) -> dict:
-    """Fetch and cache all FMP data for a ticker. TTL = 2 hours."""
+    """Fetch and cache all FMP data for a ticker. TTL = 24 hours."""
     if ticker in _cache:
         data, ts = _cache[ticker]
         if time.time() - ts < _CACHE_TTL:
             return data
 
-    profile      = get_profile(ticker)
-    income       = get_income_statement(ticker, limit=8)   # 8 quarters for YoY + acceleration
-    balance      = get_balance_sheet(ticker, limit=2)
-    cash_flow    = get_cash_flow(ticker, limit=4)
-    analyst      = get_analyst_ratings(ticker)
-    earnings_cal = get_earnings_calendar(ticker)
-    price_target = get_analyst_price_target(ticker)
+    profile       = get_profile(ticker)
+    income        = get_income_statement(ticker, limit=8)
+    balance       = get_balance_sheet(ticker, limit=2)
+    cash_flow     = get_cash_flow(ticker, limit=4)
+    analyst       = get_analyst_ratings(ticker)
+    earnings_cal  = get_earnings_calendar(ticker)
+    price_target  = get_analyst_price_target(ticker)
+    indiv_targets = get_analyst_price_targets(ticker, limit=20)   # for trust-weighted consensus
+    dcf_data      = get_dcf(ticker)                               # FMP intrinsic value
 
     data = {
         "profile": profile, "income": income, "balance": balance,
         "cash_flow": cash_flow, "analyst": analyst,
         "earnings_cal": earnings_cal, "price_target": price_target,
+        "indiv_targets": indiv_targets,
+        "dcf_data": dcf_data,
     }
     _cache[ticker] = (data, time.time())
     return data
@@ -370,19 +484,19 @@ def get_vote(ticker: str) -> dict:
             # ★ Growth inflection signals
             "revenue_growth_qoq_pct":    rev_growth_qoq,
             "revenue_growth_yoy_pct":    rev_growth_yoy,
-            "rev_accel_yoy":             rev_accel_yoy,      # ★ acceleration
+            "rev_accel_yoy":             rev_accel_yoy,
             "eps_growth_qoq_pct":        eps_growth_qoq,
-            "eps_accel_qoq":             eps_accel_qoq,      # ★ EPS acceleration
-            "fcf_inflection":            fcf_inflection,     # ★ negative→positive FCF
+            "eps_accel_qoq":             eps_accel_qoq,
+            "fcf_inflection":            fcf_inflection,
             # ★ Margin quality signals
             "gross_margin_pct":          gross_margin_pct,
-            "gross_margin_change_yoy":   gross_margin_change_yoy,  # ★ expansion
+            "gross_margin_change_yoy":   gross_margin_change_yoy,
             "operating_margin_pct":      op_margin_pct,
             "operating_margin_trend":    op_margin_trend,
             # ★ Balance sheet / efficiency
-            "rd_intensity_pct":          rd_intensity_pct,   # ★ innovation proxy
-            "cash_to_debt":              cash_to_debt,       # ★ financial strength
-            "rule_of_40":                rule_of_40,         # ★ SaaS health
+            "rd_intensity_pct":          rd_intensity_pct,
+            "cash_to_debt":              cash_to_debt,
+            "rule_of_40":                rule_of_40,
             "debt_to_equity":            dte,
             # FCF
             "free_cash_flow_trend":      fcf[:4],
@@ -394,16 +508,74 @@ def get_vote(ticker: str) -> dict:
             "market_cap":                profile.get("mktCap"),
             "upcoming_earnings":         upcoming_earnings,
             # ★ New signals
-            "dilution_yoy_pct":          dilution_yoy_pct,    # ★ share count change
-            "current_ratio":             current_ratio,        # ★ liquidity
-            "buyback_yield_pct":         buyback_yield_pct,   # ★ capital return
+            "dilution_yoy_pct":          dilution_yoy_pct,
+            "current_ratio":             current_ratio,
+            "buyback_yield_pct":         buyback_yield_pct,
         }
 
-        return call_claude(
+        result = call_claude(
             SYSTEM_PROMPT,
             f"Fundamental analysis for {ticker}: {json.dumps(market_data)}",
             "fundamentalist",
         )
+
+        # ── Valuation engine (from Fair Value Valuation Engine) ───────────────
+        spot_price   = float(profile.get("price") or 0)
+        company_name = profile.get("companyName") or ticker
+
+        # FMP DCF intrinsic value
+        dcf_price = None
+        try:
+            dcf_raw = d["dcf_data"].get("dcf")
+            if dcf_raw:
+                dcf_price = round(float(dcf_raw), 2)
+        except Exception:
+            pass
+
+        # Trust-weighted + winsorized Wall Street consensus
+        ws_data = _ws_consensus(d["indiv_targets"], spot_price, d["price_target"])
+
+        # Valuation signal (Strong Buy → Strong Sell)
+        signal = _valuation_signal(
+            ws_data.get("ws_price"), spot_price,
+            ws_data.get("ws_ci_lo"), ws_data.get("ws_ci_hi"),
+            dcf_price,
+        )
+
+        # Append all valuation + section data to the Claude result
+        result.update({
+            "company_name":     company_name,
+            "spot_price":       round(spot_price, 2) if spot_price else None,
+            "dcf_price":        dcf_price,
+            **ws_data,
+            "valuation_signal": signal,
+            # ── Section data for frontend display ─────────────────────────────
+            "valuation_section": {
+                "pe_ratio":       market_data["pe_ratio"],
+                "peg_ratio":      market_data["peg_ratio"],
+                "p_fcf":          market_data["price_to_fcf"],
+                "rev_growth_yoy": market_data["revenue_growth_yoy_pct"],
+                "rev_accel":      market_data["rev_accel_yoy"],
+                "eps_accel":      market_data["eps_accel_qoq"],
+                "fcf_inflection": market_data["fcf_inflection"],
+                "rule_of_40":     market_data["rule_of_40"],
+                "analyst_upside": market_data["analyst_target_upside_pct"],
+            },
+            "financial_section": {
+                "gross_margin":        market_data["gross_margin_pct"],
+                "gross_margin_change": market_data["gross_margin_change_yoy"],
+                "op_margin":           market_data["operating_margin_pct"],
+                "op_margin_trend":     market_data["operating_margin_trend"],
+                "debt_to_equity":      market_data["debt_to_equity"],
+                "current_ratio":       market_data["current_ratio"],
+                "cash_to_debt":        market_data["cash_to_debt"],
+                "buyback_yield":       market_data["buyback_yield_pct"],
+                "dilution_yoy":        market_data["dilution_yoy_pct"],
+                "rd_intensity":        market_data["rd_intensity_pct"],
+            },
+        })
+        return result
+
     except Exception as e:
         return {
             "agent": "fundamentalist", "ticker": ticker,

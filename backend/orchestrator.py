@@ -407,6 +407,38 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
     if (force_sell or take_profit) and final_decision != "SELL":
         final_decision = "SELL"
 
+    # ── Assemble valuation + section data from agent votes ───────────────────
+    valuation_extras = {
+        "company_name":     fund_vote.get("company_name"),
+        "spot_price":       fund_vote.get("spot_price") or current_price,
+        "dcf_price":        fund_vote.get("dcf_price"),
+        "ws_price":         fund_vote.get("ws_price"),
+        "ws_price_high":    fund_vote.get("ws_price_high"),
+        "ws_price_low":     fund_vote.get("ws_price_low"),
+        "ws_upside_pct":    fund_vote.get("ws_upside_pct"),
+        "ws_ci_lo":         fund_vote.get("ws_ci_lo"),
+        "ws_ci_hi":         fund_vote.get("ws_ci_hi"),
+        "valuation_signal": fund_vote.get("valuation_signal"),
+        "sections": {
+            "valuation":  fund_vote.get("valuation_section", {}),
+            "financial":  fund_vote.get("financial_section", {}),
+            "newsworthy": {
+                "news_sentiment":      news_vote.get("news_sentiment_score"),
+                "article_count_14d":   news_vote.get("article_count_14d"),
+                "consecutive_beats":   news_vote.get("consecutive_beats"),
+                "insider_mspr":        news_vote.get("insider_mspr"),
+                "squeeze_risk":        news_vote.get("squeeze_risk_score"),
+                "sentiment_divergence": news_vote.get("sentiment_divergence"),
+                "unusual_call_activity": news_vote.get("unusual_call_activity"),
+                "short_interest_pct":  news_vote.get("short_interest_pct"),
+                "days_to_cover":       news_vote.get("days_to_cover"),
+                "analyst_upgrades":    news_vote.get("analyst_upgrades_30d"),
+                "analyst_downgrades":  news_vote.get("analyst_downgrades_30d"),
+                "recent_headlines":    news_vote.get("recent_headlines", []),
+            },
+        },
+    }
+
     return {
         "ticker":            ticker,
         "market":            market.upper(),
@@ -423,6 +455,7 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
         "force_sell":        force_sell,
         "take_profit":       take_profit,
         "risk_manager_reason": risk_vote.get("reason"),
+        **valuation_extras,
         "agent_votes": [
             {
                 "agent_name": v.get("agent"),
@@ -430,6 +463,12 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
                 "confidence": v.get("confidence", 0.0),
                 "rationale":  v.get("rationale", ""),
                 "veto":       v.get("veto", False),
+                # Pass through sub-scores for richer agent tab display
+                "valuation_score":     v.get("valuation_score"),
+                "growth_score":        v.get("growth_score"),
+                "profitability_score": v.get("profitability_score"),
+                "revisions_score":     v.get("revisions_score"),
+                "risk_off":            v.get("risk_off"),
             }
             for v in [
                 *agent_votes,

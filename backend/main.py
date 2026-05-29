@@ -89,6 +89,17 @@ async def run_committee(ticker: str = None, market: str = Query('US')):
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
+@app.get("/api/search")
+async def search(q: str = Query(""), market: str = Query('US')):
+    """Search for tickers by name or symbol — for name-to-ticker resolution."""
+    try:
+        from backend.data.fmp_client import search_ticker
+        results = search_ticker(q.strip(), limit=8)
+        return results
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
 @app.post("/api/analyze")
 async def analyze(ticker: str, market: str = Query('US')):
     """

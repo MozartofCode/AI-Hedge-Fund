@@ -52,3 +52,21 @@ def get_analyst_price_target(ticker: str) -> dict:
     """Consensus analyst price target (high / low / consensus / median)."""
     data = _get("price-target-consensus", {"symbol": ticker})
     return data[0] if isinstance(data, list) and data else {}
+
+
+def get_analyst_price_targets(ticker: str, limit: int = 20) -> list:
+    """Individual analyst price targets with firm names — for trust-weighted consensus."""
+    data = _get("price-target", {"symbol": ticker, "limit": limit})
+    return data if isinstance(data, list) else []
+
+
+def get_dcf(ticker: str) -> dict:
+    """FMP discounted cash flow intrinsic value estimate."""
+    data = _get(f"discounted-cash-flow/{ticker}")
+    return data[0] if isinstance(data, list) and data else {}
+
+
+def search_ticker(query: str, limit: int = 8) -> list:
+    """Search for tickers by name or symbol — used for name-to-ticker resolution."""
+    data = _get("search", {"query": query, "limit": limit, "exchange": "NASDAQ,NYSE,AMEX"})
+    return data if isinstance(data, list) else []

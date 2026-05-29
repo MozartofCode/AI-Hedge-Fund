@@ -21,4 +21,5 @@ export const api = {
   session:       (id)                            => get(`/api/session/${id}`),
   latestSession: (ticker, market = 'US')         => get(`/api/latest-session/${encodeURIComponent(ticker)}?market=${market}`),
   analyze:       (ticker, market = 'US')         => post(`/api/analyze?ticker=${encodeURIComponent(ticker)}&market=${market}`),
+  search:        (q, market = 'US')              => get(`/api/search?q=${encodeURIComponent(q)}&market=${market}`),
 }
