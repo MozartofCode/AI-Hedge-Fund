@@ -555,21 +555,17 @@ function SearchBox({ onRun, loading }) {
   )
 }
 
-// ── Quick picks ────────────────────────────────────────────────────────────────
-const QUICK_PICKS = ['NVDA', 'AAPL', 'TSLA', 'MSFT', 'RKLB', 'COIN', 'PLTR', 'META', 'MSTR', 'IONQ']
-
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function Analyze() {
   const [loading, setLoading] = useState(false)
   const [result,  setResult]  = useState(null)
   const [error,   setError]   = useState(null)
-  const [market,  setMarket]  = useState('US')
 
   const run = async (sym) => {
     if (!sym) return
     setLoading(true); setResult(null); setError(null)
     try {
-      const data = await api.analyze(sym.toUpperCase(), market)
+      const data = await api.analyze(sym.toUpperCase(), 'US')
       setResult(data)
     } catch (e) {
       setError(`Analysis failed: ${e.message}`)
@@ -604,46 +600,13 @@ export default function Analyze() {
       <div className="w-full max-w-xl space-y-8 text-center">
         {/* Hero */}
         <div className="space-y-3">
-          <div className="text-5xl">🏛️</div>
-          <h1 className="text-3xl font-black text-white tracking-tight">AlphaCommittee</h1>
           <p className="text-gray-500 text-sm max-w-sm mx-auto leading-relaxed">
-            5 AI agents debate every stock. Ask about any ticker, company, or market.
+            5 AI agents debate every stock. Ask about any ticker or company.
           </p>
-        </div>
-
-        {/* Market selector */}
-        <div className="flex items-center justify-center gap-1.5 flex-wrap">
-          {[['US','🇺🇸'],['BR','🇧🇷'],['AR','🇦🇷'],['TR','🇹🇷'],['NG','🇳🇬']].map(([code, flag]) => (
-            <button
-              key={code}
-              onClick={() => setMarket(code)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                market === code ? 'bg-indigo-600 text-white' : 'bg-gray-900 text-gray-400 hover:text-gray-200 border border-white/8'
-              }`}
-            >
-              {flag} {code}
-            </button>
-          ))}
         </div>
 
         {/* Search */}
         <SearchBox onRun={run} loading={loading} />
-
-        {/* Quick picks */}
-        <div className="space-y-2">
-          <div className="text-xs text-gray-600">Quick picks</div>
-          <div className="flex flex-wrap gap-2 justify-center">
-            {QUICK_PICKS.map(s => (
-              <button
-                key={s}
-                onClick={() => run(s)}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-900 border border-white/8 text-gray-400 hover:text-white hover:border-indigo-500/40 transition-all"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* Error */}
         {error && (
