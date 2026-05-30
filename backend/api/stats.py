@@ -10,6 +10,7 @@ from backend.db.crud import (
     get_all_portfolio_snapshots, compute_win_rate,
 )
 from backend.broker.paper_broker import get_portfolio
+from backend.agents.base_agent import get_daily_spend, DAILY_BUDGET_USD
 
 router = APIRouter()
 
@@ -97,4 +98,8 @@ async def stats(market: str = Query('US'), db: AsyncSession = Depends(get_db)):
         "total_trades": total_trades,
         "total_sessions": total_sessions,
         "daily_equity": daily_equity,
+        # Claude API cost tracking
+        "claude_daily_spend_usd":  get_daily_spend(),
+        "claude_daily_budget_usd": DAILY_BUDGET_USD,
+        "claude_budget_pct_used":  round(get_daily_spend() / DAILY_BUDGET_USD * 100, 1),
     }

@@ -7,18 +7,22 @@ from backend.markets import MARKETS
 
 scheduler = AsyncIOScheduler()
 
-# Committee session times (local to each market's timezone):
-# US: 10:00, 12:30, 15:00
-# BR: 11:00, 13:30, 16:00
-# AR: 12:00, 14:00, 16:30
-# TR: 10:30, 13:00, 16:30
-# NG: 11:00, 12:30, 13:30
+# One midday session per market — keeps Claude spend under $1/day.
+# To add sessions back, set COMMITTEE_SESSIONS_PER_MARKET=3 in env vars
+# and uncomment the extra tuples.
+#
+# Full 3-session schedule (costs ~$5-6/day):
+#   "US": [(10, 0), (12, 30), (15, 0)],
+#   "BR": [(11, 0), (13, 30), (16, 0)],
+#   "AR": [(12, 0), (14, 0),  (16, 30)],
+#   "TR": [(10, 30),(13, 0),  (16, 30)],
+#   "NG": [(11, 0), (12, 30), (13, 30)],
 _MARKET_SESSIONS = {
-    "US": [(10, 0),  (12, 30), (15, 0)],
-    "BR": [(11, 0),  (13, 30), (16, 0)],
-    "AR": [(12, 0),  (14, 0),  (16, 30)],
-    "TR": [(10, 30), (13, 0),  (16, 30)],
-    "NG": [(11, 0),  (12, 30), (13, 30)],
+    "US": [(11, 30)],
+    "BR": [(12, 0)],
+    "AR": [(13, 0)],
+    "TR": [(11, 0)],
+    "NG": [(12, 0)],
 }
 
 

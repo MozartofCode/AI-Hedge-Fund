@@ -1,8 +1,11 @@
 import asyncio
 import json
+import os
 from datetime import datetime
 
-from backend.agents.base_agent import call_claude, CHAIRMAN_MODEL
+from backend.agents.base_agent import (
+    call_claude, CHAIRMAN_MODEL, CHAIRMAN_SCHEDULE_MODEL, get_daily_spend,
+)
 from backend.agents import technician, fundamentalist, newshound, macro_watcher, risk_manager
 from backend.broker.paper_broker import get_portfolio, place_order
 from backend.db.session import AsyncSessionLocal
@@ -227,8 +230,8 @@ async def run_committee_for_ticker(
             CHAIRMAN_SYSTEM,
             f"Committee analysis: {json.dumps(chairman_input)}",
             "chairman",
-            max_tokens=350,   # lean prompt — no price targets needed for scheduled runs
-            model=CHAIRMAN_MODEL,
+            max_tokens=300,   # Haiku is concise — 300 tokens is plenty for 3-bullet rationale
+            model=CHAIRMAN_SCHEDULE_MODEL,  # Haiku for batch runs — 15× cheaper than Sonnet
         )
         final_decision = chairman_out.get("decision", decision)
         # Hard-enforce risk manager rules
@@ -368,38 +371,59 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
 
     current_price = tech_vote.get("current_price")
 
-    chairman_input = {
-        "ticker":              ticker,
-        "current_price":       current_price,
-        "market":              market.upper(),
-        "weighted_score":      score,
-        "risk_off":            risk_off,
-        "spy_above_200d":      spy_above_200d,
-        "active_weights":      weights,
-        "risk_manager_veto":   risk_vote.get("veto"),
-        "force_sell":          force_sell,
-        "take_profit":         take_profit,
-        "risk_manager_reason": risk_vote.get("reason"),
-        "preliminary_decision": decision,
-        "portfolio_context": {
-            "cash_available": round(portfolio.get("cash", 0), 2),
-            "total_value":    round(portfolio.get("total_value", 0), 2),
-            "open_positions": [p["ticker"] for p in portfolio.get("positions", [])],
-            "num_positions":  len(portfolio.get("positions", [])),
-        },
-        "agent_votes": [
-            {"agent": v.get("agent"), "action": v.get("action"),
-             "confidence": v.get("confidence"), "rationale": v.get("rationale")}
-            for v in agent_votes
-        ],
-    }
-    chairman_out = call_claude(
-        CHAIRMAN_ANALYSIS_SYSTEM,
-        f"Committee analysis: {json.dumps(chairman_input)}",
-        "chairman",
-        max_tokens=600,   # on-demand analysis — include price targets, worth the tokens
-        model=CHAIRMAN_MODEL,
-    )
+    # ── Chairman call (Sonnet — full quality for user-requested analysis) ──────
+    # Skip on plain HOLD to save ~$0.013 per call — only fire on actionable signals.
+    _plain_hold = (decision == "HOLD" and not force_sell and not take_profit
+                   and not risk_vote.get("veto"))
+
+    if _plain_hold:
+        # Return a clean HOLD without spending a Sonnet token.
+        rationale_plain = (
+            f"HOLD — weighted score {score:.2f} is between thresholds "
+            f"(BUY>{BUY_THRESHOLD}, SELL<{SELL_THRESHOLD}). "
+            f"No dominant signal from the committee. "
+            f"(est. daily spend so far: ${get_daily_spend():.4f})"
+        )
+        chairman_out = {
+            "decision":           "HOLD",
+            "position_size_pct":  0,
+            "chairman_rationale": rationale_plain,
+            "price_targets":      None,
+            "stop_loss":          None,
+        }
+    else:
+        chairman_input = {
+            "ticker":              ticker,
+            "current_price":       current_price,
+            "market":              market.upper(),
+            "weighted_score":      score,
+            "risk_off":            risk_off,
+            "spy_above_200d":      spy_above_200d,
+            "active_weights":      weights,
+            "risk_manager_veto":   risk_vote.get("veto"),
+            "force_sell":          force_sell,
+            "take_profit":         take_profit,
+            "risk_manager_reason": risk_vote.get("reason"),
+            "preliminary_decision": decision,
+            "portfolio_context": {
+                "cash_available": round(portfolio.get("cash", 0), 2),
+                "total_value":    round(portfolio.get("total_value", 0), 2),
+                "open_positions": [p["ticker"] for p in portfolio.get("positions", [])],
+                "num_positions":  len(portfolio.get("positions", [])),
+            },
+            "agent_votes": [
+                {"agent": v.get("agent"), "action": v.get("action"),
+                 "confidence": v.get("confidence"), "rationale": v.get("rationale")}
+                for v in agent_votes
+            ],
+        }
+        chairman_out = call_claude(
+            CHAIRMAN_ANALYSIS_SYSTEM,
+            f"Committee analysis: {json.dumps(chairman_input)}",
+            "chairman",
+            max_tokens=600,   # on-demand analysis — include price targets, worth the tokens
+            model=CHAIRMAN_MODEL,
+        )
 
     final_decision = chairman_out.get("decision", decision)
     if risk_vote.get("veto") and final_decision == "BUY":
@@ -487,9 +511,10 @@ async def run_full_committee(market: str = 'US') -> list:
 
     market_cfg = MARKETS.get(market.upper(), MARKETS["US"])
     # Dynamic screener — free pre-filter, narrows full market to top candidates.
-    # Capped at 150 to stay within ~$4/day Claude budget (skip-HOLD optimisation
-    # means only ~15% of these actually trigger a Sonnet call).
-    tickers    = get_watchlist(market, max_tickers=150)
+    # Default 30 tickers keeps scheduled runs well under $1/day.
+    # Override with COMMITTEE_MAX_TICKERS env var (e.g. set to 50 if budget allows).
+    _max = int(os.getenv("COMMITTEE_MAX_TICKERS", "30"))
+    tickers    = get_watchlist(market, max_tickers=_max)
 
     try:
         portfolio = await get_portfolio(market)
