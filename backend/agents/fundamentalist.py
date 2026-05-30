@@ -6,8 +6,10 @@ Round 4 additions: trust-weighted analyst consensus (winsorized), bootstrap CI,
 DCF fair value from FMP, valuation signal (Strong Buy → Strong Sell).
 """
 import json
+import math
 import time
 import numpy as np
+import yfinance as yf
 from datetime import datetime
 from backend.agents.base_agent import call_claude
 from backend.data.fmp_client import (
@@ -199,13 +201,181 @@ Standard signals:
 Prefer SELL with low confidence over HOLD when bearish. Reserve HOLD for genuine neutrality."""
 
 
+# ── yfinance key maps for DataFrame → FMP-compatible dicts ──────────────────
+_YF_INCOME_KEYS = {
+    "revenue":                        ["Total Revenue", "Revenue"],
+    "costOfRevenue":                  ["Cost Of Revenue", "Cost of Revenue", "Cost Of Goods Sold"],
+    "grossProfit":                    ["Gross Profit"],
+    "operatingIncome":                ["Operating Income", "EBIT", "Operating Profit"],
+    "netIncome":                      ["Net Income", "Net Income Common Stockholders"],
+    "eps":                            ["Basic EPS", "Diluted EPS"],
+    "researchAndDevelopmentExpenses": ["Research And Development", "Research & Development", "Research Development"],
+    "weightedAverageShsDilOut":       ["Diluted Average Shares", "Weighted Average Diluted Shares"],
+    "weightedAverageShsOut":          ["Basic Average Shares", "Weighted Average Shares"],
+}
+_YF_BALANCE_KEYS = {
+    "totalStockholdersEquity":   ["Stockholders Equity", "Total Equity Gross Minority Interest", "Common Stock Equity"],
+    "totalCurrentAssets":        ["Current Assets"],
+    "totalCurrentLiabilities":   ["Current Liabilities"],
+    "cashAndCashEquivalents":    ["Cash And Cash Equivalents", "Cash Equivalents", "Cash"],
+    "shortTermInvestments":      ["Other Short Term Investments", "Short Term Investments"],
+    "totalDebt":                 ["Total Debt", "Long Term Debt And Capital Lease Obligation"],
+}
+_YF_CASHFLOW_KEYS = {
+    "freeCashFlow":          ["Free Cash Flow"],
+    "operatingCashFlow":     ["Operating Cash Flow", "Cash From Operations"],
+    "capitalExpenditure":    ["Capital Expenditure", "Purchase Of PP&E", "Capital Expenditures"],
+    "commonStockRepurchased": ["Repurchase Of Capital Stock", "Common Stock Repurchased"],
+}
+
+
+def _yf_safe(val) -> float | None:
+    """Return float or None — never NaN/Inf."""
+    try:
+        f = float(val)
+        return None if (math.isnan(f) or math.isinf(f)) else f
+    except Exception:
+        return None
+
+
+def _yf_row(df, keys: list):
+    """Extract the first matching row from a yfinance DataFrame."""
+    if df is None or (hasattr(df, 'empty') and df.empty):
+        return None
+    for k in keys:
+        if k in df.index:
+            return df.loc[k]
+    return None
+
+
+def _yf_to_fmp_stmts(df, key_map: dict, n_periods: int = 8) -> list:
+    """Convert a yfinance DataFrame (rows=metrics, cols=quarters) to list of FMP-like dicts."""
+    if df is None or (hasattr(df, 'empty') and df.empty):
+        return []
+    rows = {fmp_key: _yf_row(df, yf_keys) for fmp_key, yf_keys in key_map.items()}
+    result = []
+    for i in range(min(n_periods, len(df.columns))):
+        entry = {}
+        for fmp_key, row in rows.items():
+            entry[fmp_key] = _yf_safe(row.iloc[i]) if row is not None and len(row) > i else None
+        result.append(entry)
+    return result
+
+
+def _yf_cashflow_with_derived(df, n_periods: int = 4) -> list:
+    """Cash flow with FCF derived from OCF - CapEx when not directly available."""
+    entries = _yf_to_fmp_stmts(df, _YF_CASHFLOW_KEYS, n_periods)
+    for e in entries:
+        if e.get("freeCashFlow") is None:
+            ocf   = e.get("operatingCashFlow")
+            capex = e.get("capitalExpenditure")   # usually negative in yfinance
+            if ocf is not None and capex is not None:
+                e["freeCashFlow"] = ocf + capex    # capex is already negative
+    return entries
+
+
+def _fetch_yf_fundamentals(ticker: str) -> dict:
+    """
+    Full yfinance fallback — returns the same structure as _get_fundamental_data.
+    Free, no API key required. Used when FMP returns empty data.
+    """
+    try:
+        t      = yf.Ticker(ticker)
+        info   = t.info or {}
+    except Exception:
+        return {}
+
+    # Quarterly statements (try new attr names first, fall back to old ones)
+    def _get_stmt(new_attr, old_attr):
+        try:
+            df = getattr(t, new_attr, None)
+            if df is None or (hasattr(df, 'empty') and df.empty):
+                df = getattr(t, old_attr, None)
+            return df
+        except Exception:
+            return None
+
+    qis = _get_stmt("quarterly_income_stmt",    "quarterly_financials")
+    qbs = _get_stmt("quarterly_balance_sheet",  "quarterly_balance_sheet")
+    qcf = _get_stmt("quarterly_cashflow",       "quarterly_cashflow")
+
+    # Build FMP-compatible income list and patch derived COGS
+    income = _yf_to_fmp_stmts(qis, _YF_INCOME_KEYS, 8)
+    for row in income:
+        if row.get("costOfRevenue") is None and row.get("revenue") and row.get("grossProfit"):
+            row["costOfRevenue"] = row["revenue"] - row["grossProfit"]
+
+    balance   = _yf_to_fmp_stmts(qbs, _YF_BALANCE_KEYS, 2)
+    cash_flow = _yf_cashflow_with_derived(qcf, 4)
+
+    # Build FMP-compatible profile from info dict
+    # yfinance debtToEquity is reported as pct (e.g. 36.0 = 0.36x), divide by 100
+    # gross/operating margins are 0-1 decimals, multiply by 100 for pct
+    price = _yf_safe(info.get("currentPrice") or info.get("regularMarketPrice"))
+
+    # Analyst consensus from info when individual targets aren't available
+    target_mean = _yf_safe(info.get("targetMeanPrice"))
+    target_high = _yf_safe(info.get("targetHighPrice"))
+    target_low  = _yf_safe(info.get("targetLowPrice"))
+
+    profile = {
+        "companyName":       info.get("longName") or info.get("shortName") or ticker,
+        "sector":            info.get("sector"),
+        "price":             price,
+        "mktCap":            _yf_safe(info.get("marketCap")),
+        "sharesOutstanding": _yf_safe(info.get("sharesOutstanding")),
+        "pe":                _yf_safe(info.get("trailingPE")),
+        # Store extras for use in get_vote (never return 0 when source is None)
+        "_peg_ratio":        _yf_safe(info.get("pegRatio")),
+        "_rev_growth_yoy":   (_yf_safe(info.get("revenueGrowth")) * 100)
+                             if info.get("revenueGrowth") is not None else None,
+        "_gross_margin_pct": (_yf_safe(info.get("grossMargins")) * 100)
+                             if info.get("grossMargins") is not None else None,
+        "_op_margin_pct":    (_yf_safe(info.get("operatingMargins")) * 100)
+                             if info.get("operatingMargins") is not None else None,
+        "_net_margin_pct":   (_yf_safe(info.get("profitMargins")) * 100)
+                             if info.get("profitMargins") is not None else None,
+        # yfinance debtToEquity is ratio×100 (e.g. 36.0 = 0.36x D/E); divide by 100
+        "_debt_to_equity":   (_yf_safe(info.get("debtToEquity")) / 100)
+                             if info.get("debtToEquity") is not None else None,
+        "_current_ratio":    _yf_safe(info.get("currentRatio")),
+        "_fcf_annual":       _yf_safe(info.get("freeCashflow")),
+        "_total_debt":       _yf_safe(info.get("totalDebt")),
+        "_total_cash":       _yf_safe(info.get("totalCash")),
+    }
+
+    price_target = {
+        "targetConsensus": target_mean,
+        "targetHigh":      target_high,
+        "targetLow":       target_low,
+        "targetMedian":    _yf_safe(info.get("targetMedianPrice")),
+    }
+
+    return {
+        "profile":       profile,
+        "income":        income,
+        "balance":       balance,
+        "cash_flow":     cash_flow,
+        "analyst":       {},
+        "earnings_cal":  [],
+        "price_target":  price_target,
+        "indiv_targets": [],
+        "dcf_data":      {},
+        "_from_yf":      True,
+    }
+
+
 def _get_fundamental_data(ticker: str) -> dict:
-    """Fetch and cache all FMP data for a ticker. TTL = 24 hours."""
+    """
+    Fetch and cache fundamental data for a ticker. TTL = 24 hours.
+    Primary: FMP (needs API key). Fallback: yfinance (free, no key required).
+    """
     if ticker in _cache:
         data, ts = _cache[ticker]
         if time.time() - ts < _CACHE_TTL:
             return data
 
+    # ── FMP (primary) ─────────────────────────────────────────────────────────
     profile       = get_profile(ticker)
     income        = get_income_statement(ticker, limit=8)
     balance       = get_balance_sheet(ticker, limit=2)
@@ -213,8 +383,27 @@ def _get_fundamental_data(ticker: str) -> dict:
     analyst       = get_analyst_ratings(ticker)
     earnings_cal  = get_earnings_calendar(ticker)
     price_target  = get_analyst_price_target(ticker)
-    indiv_targets = get_analyst_price_targets(ticker, limit=20)   # for trust-weighted consensus
-    dcf_data      = get_dcf(ticker)                               # FMP intrinsic value
+    indiv_targets = get_analyst_price_targets(ticker, limit=20)
+    dcf_data      = get_dcf(ticker)
+
+    # ── yfinance fallback — fills every gap when FMP is empty ─────────────────
+    # Triggered when FMP key is missing/invalid OR on the free tier.
+    _need_yf = not profile or not income
+    if _need_yf:
+        print(f"[fundamentalist] {ticker}: FMP returned empty — fetching yfinance fallback")
+        yf_data = _fetch_yf_fundamentals(ticker)
+        if not profile:
+            profile = yf_data.get("profile", {})
+        if not income:
+            income = yf_data.get("income", [])
+        if not balance:
+            balance = yf_data.get("balance", [])
+        if not cash_flow:
+            cash_flow = yf_data.get("cash_flow", [])
+        if not price_target or not price_target.get("targetConsensus"):
+            price_target = yf_data.get("price_target", {})
+    else:
+        yf_data = {}
 
     data = {
         "profile": profile, "income": income, "balance": balance,
@@ -222,6 +411,7 @@ def _get_fundamental_data(ticker: str) -> dict:
         "earnings_cal": earnings_cal, "price_target": price_target,
         "indiv_targets": indiv_targets,
         "dcf_data": dcf_data,
+        "_yf_extras": yf_data.get("profile", {}),  # pass yf-computed extras through
     }
     _cache[ticker] = (data, time.time())
     return data
@@ -234,6 +424,7 @@ def get_vote(ticker: str) -> dict:
         cash_flow, analyst       = d["cash_flow"], d["analyst"]
         earnings_cal             = d["earnings_cal"]
         price_target             = d["price_target"]
+        _yf                      = d.get("_yf_extras", {})   # pre-computed yfinance values
 
         # ── Revenue growth QoQ ────────────────────────────────────────────────
         rev_growth_qoq = None
@@ -472,6 +663,26 @@ def get_vote(ticker: str) -> dict:
                     break
             except Exception:
                 pass
+
+        # ── Fill any remaining None values from yfinance extras ──────────────
+        # _yf dict is populated when FMP returned empty; these are the last resort.
+        if rev_growth_yoy is None and _yf.get("_rev_growth_yoy"):
+            rev_growth_yoy = round(_yf["_rev_growth_yoy"], 2)
+        if gross_margin_pct is None and _yf.get("_gross_margin_pct"):
+            gross_margin_pct = round(_yf["_gross_margin_pct"], 2)
+        if op_margin_pct is None and _yf.get("_op_margin_pct"):
+            op_margin_pct = round(_yf["_op_margin_pct"], 2)
+        if dte is None and _yf.get("_debt_to_equity") is not None:
+            dte = round(_yf["_debt_to_equity"], 2)
+        if current_ratio is None and _yf.get("_current_ratio"):
+            current_ratio = round(_yf["_current_ratio"], 2)
+        if peg_ratio is None and _yf.get("_peg_ratio"):
+            peg_ratio = round(_yf["_peg_ratio"], 2)
+        if cash_to_debt is None and _yf.get("_total_cash") and _yf.get("_total_debt"):
+            tc = _yf["_total_cash"]; td = _yf["_total_debt"]
+            cash_to_debt = round(tc / td, 2) if td > 0 else (999 if tc > 0 else None)
+        elif cash_to_debt is None and _yf.get("_total_cash") and not _yf.get("_total_debt"):
+            cash_to_debt = 999   # debt-free
 
         market_data = {
             "ticker":                    ticker,
