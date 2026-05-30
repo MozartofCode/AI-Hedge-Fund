@@ -12,6 +12,7 @@ Monthly (10y): Market Structure (HH+HL / LL+LH / BOS / CHoCH),
                RSI divergence, MACD signal type
 """
 import json
+import math
 import time
 import numpy as np
 import pandas as pd
@@ -21,6 +22,29 @@ from backend.data.indicators import (
     calc_rsi, calc_macd, calc_sma, calc_bbands,
     calc_atr, calc_volume_ratio, calc_adx, calc_roc,
 )
+
+
+def _clean_nans(obj):
+    """
+    Recursively replace NaN / Inf with None so json.dumps never raises ValueError.
+    json.dumps chokes on float('nan') even with default=str — this pre-cleans the tree.
+    """
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _clean_nans(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean_nans(v) for v in obj]
+    return obj
+
+
+def _safe_float(val, decimals=2):
+    """Convert a value to rounded float, returning None if NaN/None/error."""
+    try:
+        f = float(val)
+        return round(f, decimals) if not (math.isnan(f) or math.isinf(f)) else None
+    except Exception:
+        return None
 
 _cache: dict = {}
 _CACHE_TTL = 600  # 10 minutes
@@ -285,15 +309,15 @@ def _weekly_analysis(df_weekly: pd.DataFrame) -> dict:
     out = {}
     try:
         c = df_weekly["Close"]; v = df_weekly["Volume"]
-        e20  = float(_ema(c, 20).iloc[-1])
-        e50  = float(_ema(c, 50).iloc[-1])
-        e200 = float(_ema(c, 200).iloc[-1]) if len(c) >= 200 else None
-        out["weekly_ema20"] = round(e20, 2)
-        out["weekly_ema50"] = round(e50, 2)
-        if e200: out["weekly_ema200"] = round(e200, 2)
+        e20  = _safe_float(_ema(c, 20).iloc[-1])
+        e50  = _safe_float(_ema(c, 50).iloc[-1])
+        e200 = _safe_float(_ema(c, 200).iloc[-1]) if len(c) >= 200 else None
+        if e20  is not None: out["weekly_ema20"] = e20
+        if e50  is not None: out["weekly_ema50"] = e50
+        if e200 is not None: out["weekly_ema200"] = e200
         out["weekly_ema_alignment"] = (
-            "full_bullish"  if e200 and e20 > e50 > e200 else
-            "full_bearish"  if e200 and e20 < e50 < e200 else "mixed"
+            "full_bullish"  if e200 and e20 and e50 and e20 > e50 > e200 else
+            "full_bearish"  if e200 and e20 and e50 and e20 < e50 < e200 else "mixed"
         )
         # OBV divergence
         obv_s = (np.sign(c.diff()) * v).fillna(0).cumsum()
@@ -307,16 +331,18 @@ def _weekly_analysis(df_weekly: pd.DataFrame) -> dict:
                 out["weekly_obv_divergence"] = "confirming"
         # MACD histogram expanding?
         ml = _ema(c, 12) - _ema(c, 26); sig = _ema(ml, 9); hist = ml - sig
-        out["weekly_macd_hist"]     = round(float(hist.iloc[-1]), 4)
-        out["weekly_macd_expanding"] = bool(abs(hist.iloc[-1]) > abs(hist.iloc[-2]))
+        mh0 = _safe_float(hist.iloc[-1], 4); mh1 = _safe_float(hist.iloc[-2], 4)
+        if mh0 is not None: out["weekly_macd_hist"] = mh0
+        if mh0 is not None and mh1 is not None:
+            out["weekly_macd_expanding"] = abs(mh0) > abs(mh1)
         # Anchored VWAP
         avwap, anchor_date = _anchored_vwap(df_weekly)
         if avwap:
             out["weekly_avwap"]        = avwap
             out["weekly_avwap_anchor"] = anchor_date
             out["weekly_price_vs_avwap"] = round((float(c.iloc[-1]) / avwap - 1) * 100, 2)
-        # Volume Profile (weekly)
-        vp = _volume_profile(df_weekly[-52:] if len(df_weekly) >= 52 else df_weekly)
+        # Volume Profile (weekly) — must use .iloc for DatetimeIndex
+        vp = _volume_profile(df_weekly.iloc[-52:] if len(df_weekly) >= 52 else df_weekly)
         if vp: out["weekly_volume_profile"] = vp
     except Exception as exc:
         print(f"[technician] weekly_analysis error: {exc}")
@@ -341,11 +367,12 @@ def _monthly_analysis(df_monthly: pd.DataFrame) -> dict:
             "bullish"      if hist.iloc[-1] > 0 else "bearish"
         )
         # EMA 20 vs SMA 50 alignment on monthly
-        e20_mo = float(_ema(c, 20).iloc[-1])
-        s50_mo = float(c.rolling(50).mean().iloc[-1])
-        out["monthly_ema20"] = round(e20_mo, 2)
-        out["monthly_sma50"] = round(s50_mo, 2)
-        out["monthly_trend_bias"] = "bullish" if e20_mo > s50_mo else "bearish"
+        e20_mo = _safe_float(_ema(c, 20).iloc[-1])
+        s50_mo = _safe_float(c.rolling(50).mean().iloc[-1])
+        if e20_mo is not None: out["monthly_ema20"] = e20_mo
+        if s50_mo is not None: out["monthly_sma50"] = s50_mo
+        if e20_mo is not None and s50_mo is not None:
+            out["monthly_trend_bias"] = "bullish" if e20_mo > s50_mo else "bearish"
     except Exception as exc:
         print(f"[technician] monthly_analysis error: {exc}")
     return out
@@ -686,7 +713,7 @@ def get_vote(ticker: str) -> dict:
 
         vote = call_claude(
             SYSTEM_PROMPT,
-            f"Technical analysis for {ticker}: {json.dumps(market_data, default=str)}",
+            f"Technical analysis for {ticker}: {json.dumps(_clean_nans(market_data))}",
             "technician",
         )
         vote["current_price"] = current_price
