@@ -1,172 +1,135 @@
 # AI Hedge Fund
 
-An autonomous multi-agent trading analysis system powered by Claude AI. Five specialized agents independently analyze a stock from different angles, then a Chairman synthesizes all votes into a final conviction-weighted recommendation.
+An autonomous paper trading system powered by Claude AI. AI agents independently analyze
+stocks and currency pairs, debate the evidence, and execute paper trades — starting with
+$1,000,000 and no brokerage account needed.
+
+---
+
+## What It Does
+
+**Stock Portfolio** — Five AI analysts each study a different angle of a stock (its price
+chart, financial health, recent news, the overall economy, and risk) then each votes to
+buy, sell, or hold. A Chairman AI reads all five opinions and makes the final call, like a
+group of advisors debating before a boss decides.
+
+**Forex Trading** — The system trades 10 currency pairs by finding currencies where one
+country pays a much higher interest rate than the other — simply holding the higher-rate
+currency earns money over time, the way a savings account earns interest. It also checks
+price momentum and global economic signals, with automatic stop-losses so no single bad
+trade can blow up the account.
 
 ---
 
 ## Architecture
 
 ```
-User → FastAPI Backend → 5 Parallel Agents → Chairman → Report
-                              │
-              ┌───────────────┼───────────────┐
-         Technician    Fundamentalist    Sentiment
-              │               │               │
-         Multi-TF TA     FMP Financials   (placeholder)
-         yfinance          FMP DCF
-              │
-       ┌──────┼──────┐
-    Weekly  Daily  Monthly
+                    ┌─────────────────────────────┐
+                    │   React 18 + Tailwind CSS    │
+                    │   Vercel (frontend)           │
+                    └─────────────┬───────────────┘
+                                  │ REST
+                    ┌─────────────▼───────────────┐
+                    │   FastAPI + APScheduler      │
+                    │   Railway (backend)           │
+                    └──────┬──────────────┬────────┘
+                           │              │
+            ┌──────────────▼──┐    ┌──────▼──────────────┐
+            │  Stock Committee │    │  Forex Committee     │
+            │                  │    │                      │
+            │  Technician      │    │  FX Technician       │
+            │  Fundamentalist  │    │  FX Carry            │
+            │  Newshound       │    │  FX Macro            │
+            │  Macro Watcher   │    │  FX Risk Manager     │
+            │  Risk Manager    │    │  (pure logic)        │
+            │  Chairman (AI)   │    │  Chairman (AI)       │
+            └──────────────────┘    └──────────────────────┘
+                           │              │
+                    ┌──────▼──────────────▼────────┐
+                    │   PostgreSQL — Supabase       │
+                    └──────────────────────────────┘
 ```
 
-**Backend:** FastAPI + SQLAlchemy (async) + PostgreSQL — deployed on Railway  
-**Frontend:** React 18 + Tailwind CSS + Recharts — deployed on Vercel  
-**AI:** Anthropic Claude (Haiku for agents, Sonnet for Chairman synthesis)
+**AI Models:** Claude Haiku for all agents · Claude Sonnet for on-demand Chairman synthesis
+**Data:** yfinance (free) · Finnhub (news) · FMP (fundamentals)
 
 ---
 
-## Agents
+## Features
 
-### 1. Technician — Multi-Timeframe ICT/SMC Engine
-
-Fetches 3 timeframes from yfinance and runs a full technical suite:
-
-**Daily (2 years)**
-- Order Blocks — identifies bullish/bearish institutional candles with body size and wick ratio filters
-- Liquidity Sweeps — detects stop hunts above swing highs / below swing lows + equal highs/lows
-- Market Structure — classifies HH+HL (uptrend), LL+LH (downtrend), BOS (break of structure), CHoCH (change of character)
-- Fibonacci Retracement — swing high/low over 120-day window; nearest level + position %
-- Volume Profile — vectorized 20-bin POC/VAH/VAL
-- Anchored VWAP — anchored to highest-volume day in the window
-- Stochastic RSI — K line + signal (overbought/oversold/neutral/bullish cross/bearish cross)
-- RSI (14) + MACD signal
-
-**Weekly (5 years)**
-- EMA alignment (20/50/200) — strongly_bullish / bullish / mixed / bearish / strongly_bearish
-- OBV divergence
-- MACD signal
-- Anchored VWAP + Volume Profile (52-week)
-
-**Monthly (10 years)**
-- Market Structure (macro trend)
-- RSI divergence (bullish/bearish/none)
-- MACD signal
-
-### 2. Fundamentalist — Fair Value Engine
-
-Fetches quarterly financials from FMP and computes:
-
-- **Revenue growth** — YoY and QoQ acceleration
-- **EPS growth** — YoY
-- **Gross / Operating / Net margins**
-- **FCF Yield** — trailing 4-quarter FCF / market cap
-- **Debt/Equity ratio**
-- **Trust-weighted analyst consensus** — winsorized, bootstrap 95% CI; firms weighted by historical accuracy (Goldman Sachs 1.30x to Wedbush 0.85x)
-- **DCF intrinsic value** — from FMP model
-- **Valuation signal** — STRONG BUY / BUY / OUTPERFORM / HOLD / UNDERPERFORM / SELL / STRONG SELL
-
-### 3. Sentiment Agent *(stub — Phase 2)*
-
-Placeholder for news sentiment + social signal integration.
-
-### 4. Macro Agent *(stub — Phase 2)*
-
-Placeholder for yield curve, DXY, VIX, sector rotation.
-
-### 5. Insider Agent *(stub — Phase 2)*
-
-Placeholder for SEC Form 4 insider transaction parsing.
+- **Analyze any stock** — type a ticker or company name and get a full AI committee report
+  in ~30 seconds, with plain-English explanations of every metric
+- **Stock Portfolio** — autonomous paper trading across US, Brazil, Argentina, Turkey, and
+  Nigeria markets; $1M starting balance; positions tracked live
+- **Forex Trading** — 10 major currency pairs traded with carry, momentum, and macro signals;
+  $1M starting balance; live rates strip with P&L
+- **Daily budget guard** — Claude spend is capped (default $1.25/day) so there are no
+  surprise bills
+- **Plain-English results** — all agent rationales and metric labels are written for everyday
+  investors, not finance professionals
 
 ---
 
-## Chairman (Synthesis)
+## Cost Profile
 
-After all agents vote, the Chairman (Claude Sonnet) receives every agent's action, confidence, rationale, and suggested_position_size_pct. It produces:
-
-- Overall recommendation (BUY / HOLD / SELL)
-- Conviction score (0–100)
-- Weighted position size %
-- Narrative synthesis paragraph
-- Bull case / Bear case / Key risks
-
-**Cost optimization:** If all agent votes are HOLD with confidence < 0.4, the Chairman call is skipped and a default HOLD response is returned — saving ~$0.003/request.
-
-**Daily cap:** Budget guard limits Chairman calls to ~$4/day.
-
----
-
-## Dynamic Screener
-
-Runs on a configurable schedule (APScheduler). Screens a watchlist of tickers, runs the full agent pipeline on each, stores results in PostgreSQL. Frontend polls /api/screener/results for the latest batch.
-
----
-
-## UI
-
-**Analyze Page** — Claude-style landing:
-- Time-based greeting ("Good morning / afternoon / evening, Investor.") driven by EST/EDT via Intl.DateTimeFormat
-- 2x2 suggestion cards for one-click analysis (NVDA, TSLA, RKLB, AAPL)
-- Search box with ticker resolution
-
-**Results Page** — Tabbed breakdown:
-- Overview: conviction gauge, price, recommendation
-- Technical: multi-timeframe signals, Order Blocks, Liquidity, Structure
-- Fundamental: revenue/EPS growth, margins, FCF yield, analyst consensus
-- Chairman Report: full prose synthesis
+| Component | Model | Cost/analysis |
+|---|---|---|
+| 4 stock agents | Claude Haiku | ~$0.002 |
+| Chairman (on-demand) | Claude Sonnet | ~$0.006 |
+| **Per stock analysis** | | **~$0.008** |
+| Scheduled committee (daily) | All Haiku | ~$0.91/day |
+| Forex committee (2x/day) | All Haiku | ~$0.09/day |
+| **Daily total** | | **~$1.00/day** |
 
 ---
 
 ## Setup
 
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL (or use Railway's managed Postgres)
-
 ### Environment Variables
 
-**Backend (.env or Railway dashboard):**
-
+**Backend (Railway):**
 ```
 ANTHROPIC_API_KEY=sk-ant-...
-FMP_API_KEY=...              # financialmodelingprep.com — free tier works for most endpoints
-DATABASE_URL=postgresql+asyncpg://...
+DATABASE_URL=postgresql+asyncpg://postgres:PASSWORD@db.<project>.supabase.co:5432/postgres
+FINNHUB_API_KEY=...
+FMP_API_KEY=...
+DAILY_BUDGET_USD=1.25
+FRONTEND_URL=https://your-app.vercel.app
 ```
 
-> FMP Free Tier Note: DCF valuations and individual analyst price targets require a paid FMP plan. On the free tier, these fields will be empty but all other fundamental metrics (revenue, EPS, margins, analyst consensus) will still populate.
-
-**Frontend (.env.local or Vercel dashboard):**
-
+**Frontend (Vercel):**
 ```
-VITE_API_BASE_URL=https://your-railway-app.railway.app
+VITE_API_URL=https://your-railway-backend.up.railway.app
 ```
+
+> FMP free tier (250 calls/day) works for most metrics. If unavailable, the system
+> automatically falls back to yfinance for all fundamental data — nothing breaks.
 
 ### Local Development
 
 ```bash
 # Backend
-cd backend
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn backend.main:app --reload
 
-# Frontend
-cd frontend
-npm install
-npm run dev
+# Frontend (separate terminal)
+cd frontend && npm install && npm run dev
 ```
+
+Backend: http://localhost:8000
+Frontend: http://localhost:5173
 
 ### Deployment
 
 **Railway (backend):**
 1. Connect GitHub repo
 2. Set env vars in Railway dashboard
-3. Railway auto-deploys on push to main
+3. Start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
 
 **Vercel (frontend):**
-1. Import repo, set root to frontend/
-2. Set VITE_API_BASE_URL env var
-3. Vercel auto-deploys on push to main
+1. Import repo, set root to `frontend/`
+2. Set `VITE_API_URL` env var
+3. Auto-deploys on push to main
 
 ---
 
@@ -175,52 +138,24 @@ npm run dev
 ```
 AI-Hedge-Fund/
 ├── backend/
-│   ├── agents/
-│   │   ├── base_agent.py          # call_claude() wrapper, model constants
-│   │   ├── technician.py          # Multi-TF ICT/SMC technical engine
-│   │   ├── fundamentalist.py      # Fair value + FMP financials engine
-│   │   ├── sentiment_agent.py     # Stub
-│   │   ├── macro_agent.py         # Stub
-│   │   └── insider_agent.py       # Stub
-│   ├── data/
-│   │   └── fmp_client.py          # FMP API wrapper (quarterly statements, DCF, targets)
-│   ├── routers/
-│   │   ├── analyze.py             # POST /api/analyze — runs agent pipeline
-│   │   └── screener.py            # GET /api/screener/results
-│   ├── models.py                  # SQLAlchemy ORM models
-│   ├── database.py                # Async engine + session factory
-│   ├── chairman.py                # Chairman synthesis + cost guard
-│   ├── scheduler.py               # APScheduler screener job
-│   └── main.py                    # FastAPI app factory
+│   ├── main.py                  # FastAPI app entry point
+│   ├── orchestrator.py          # Stock committee logic
+│   ├── forex_orchestrator.py    # Forex committee logic
+│   ├── scheduler.py             # Auto-trading schedule
+│   ├── agents/                  # All AI agents
+│   ├── broker/                  # Paper trading execution
+│   ├── data/                    # Market data clients
+│   ├── db/                      # Database models + CRUD
+│   └── api/                     # FastAPI route handlers
 ├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Analyze.jsx        # Claude-style landing + search
-│   │   │   └── Results.jsx        # Tabbed analysis report
-│   │   ├── components/
-│   │   │   └── SearchBox.jsx
-│   │   └── App.jsx
-│   ├── package.json
-│   └── vite.config.js
-├── requirements.txt
-└── README.md
+│   └── src/
+│       ├── pages/
+│       │   ├── Analyze.jsx      # Stock analysis page
+│       │   ├── Portfolio.jsx    # Stock portfolio page
+│       │   └── ForexPortfolio.jsx  # Forex trading page
+│       └── App.jsx
+└── requirements.txt
 ```
-
----
-
-## Cost Profile
-
-| Component        | Model         | Tokens    | Cost/call |
-|------------------|---------------|-----------|-----------|
-| Technician       | Claude Haiku  | ~150 out  | ~$0.0003  |
-| Fundamentalist   | Claude Haiku  | ~150 out  | ~$0.0003  |
-| Sentiment (stub) | —             | —         | —         |
-| Macro (stub)     | —             | —         | —         |
-| Insider (stub)   | —             | —         | —         |
-| Chairman         | Claude Sonnet | ~600 out  | ~$0.003   |
-| **Per analysis** |               |           | **~$0.004**|
-
-At 1,000 analyses/day: ~$4/day. The Chairman skip-on-HOLD optimization cuts costs further for low-signal periods.
 
 ---
 
