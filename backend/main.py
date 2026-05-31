@@ -11,8 +11,8 @@ load_dotenv()
 
 from backend.db.models import Base
 from backend.db.session import engine, get_db, AsyncSessionLocal
-from backend.db.crud import create_session, save_agent_vote, finalize_session, log_trade, init_paper_portfolio
-from backend.api import portfolio, trades, debates, stats
+from backend.db.crud import create_session, save_agent_vote, finalize_session, log_trade, init_paper_portfolio, init_forex_portfolio
+from backend.api import portfolio, trades, debates, stats, forex as forex_api
 from backend.scheduler import start_scheduler
 from backend.markets import MARKETS, is_market_open
 from backend.agents.base_agent import get_stub_vote
@@ -30,6 +30,8 @@ async def lifespan(app: FastAPI):
                 market=mkt_code,
                 starting_cash=cfg["starting_cash"],
             )
+        # Seed forex portfolio ($1M starting balance)
+        await init_forex_portfolio(db, starting_cash=1_000_000.0)
     start_scheduler()
     yield
     await engine.dispose()
@@ -55,6 +57,7 @@ app.include_router(portfolio.router, prefix="/api")
 app.include_router(trades.router, prefix="/api")
 app.include_router(debates.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
+app.include_router(forex_api.router, prefix="/api")
 
 
 @app.get("/api/health")
