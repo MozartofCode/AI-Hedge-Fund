@@ -132,11 +132,14 @@ function Section({ title, icon, children, defaultOpen = false }) {
 }
 
 // ── Metric row ─────────────────────────────────────────────────────────────────
-function MetricRow({ label, value, valueClass, note }) {
+function MetricRow({ label, value, valueClass, note, desc }) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
-      <span className="text-xs text-gray-500">{label}</span>
-      <div className="text-right">
+    <div className="flex items-start justify-between py-2 border-b border-white/5 last:border-0 gap-4">
+      <div className="min-w-0">
+        <div className="text-xs text-gray-400">{label}</div>
+        {desc && <div className="text-[10px] text-gray-600 mt-0.5 leading-snug">{desc}</div>}
+      </div>
+      <div className="text-right flex-shrink-0">
         <span className={`text-xs font-medium ${valueClass || 'text-gray-300'}`}>{value ?? '—'}</span>
         {note && <span className="text-xs text-gray-600 ml-1.5">{note}</span>}
       </div>
@@ -150,22 +153,49 @@ function ValuationSection({ data }) {
   const v = data
   return (
     <div className="space-y-0">
-      <MetricRow label="P/E Ratio"            value={v.pe_ratio ? `${fmt(v.pe_ratio, 1)}x` : null} />
-      <MetricRow label="PEG Ratio"            value={v.peg_ratio ? `${fmt(v.peg_ratio, 2)}` : null}
+      <MetricRow
+        label="P/E Ratio"
+        desc="How much you pay for $1 of annual profit — lower is cheaper"
+        value={v.pe_ratio ? `${fmt(v.pe_ratio, 1)}x` : null} />
+      <MetricRow
+        label="Value vs Growth (PEG)"
+        desc="Under 1.0 = potentially cheap relative to growth rate"
+        value={v.peg_ratio ? `${fmt(v.peg_ratio, 2)}` : null}
         valueClass={v.peg_ratio != null ? (v.peg_ratio < 1 ? 'text-green-400' : v.peg_ratio > 2 ? 'text-red-400' : 'text-gray-300') : ''} />
-      <MetricRow label="Price / FCF"          value={v.p_fcf ? `${fmt(v.p_fcf, 1)}x` : null}
+      <MetricRow
+        label="Price vs Free Cash Flow"
+        desc="How expensive the stock is vs cash the business generates — under 20x is healthy"
+        value={v.p_fcf ? `${fmt(v.p_fcf, 1)}x` : null}
         valueClass={v.p_fcf != null ? (v.p_fcf < 20 ? 'text-green-400' : v.p_fcf > 40 ? 'text-red-400' : 'text-gray-300') : ''} />
-      <MetricRow label="Revenue Growth (YoY)" value={fmtPct(v.rev_growth_yoy)}
+      <MetricRow
+        label="Revenue Growth"
+        desc="How much faster the company is selling compared to a year ago"
+        value={fmtPct(v.rev_growth_yoy)}
         valueClass={uptrendColor(v.rev_growth_yoy)} />
-      <MetricRow label="Revenue Acceleration" value={v.rev_accel != null ? fmtPct(v.rev_accel) : null}
+      <MetricRow
+        label="Growth Momentum"
+        desc="Is the growth rate itself speeding up? Positive = accelerating"
+        value={v.rev_accel != null ? fmtPct(v.rev_accel) : null}
         note="vs prior quarter" valueClass={uptrendColor(v.rev_accel)} />
-      <MetricRow label="EPS Acceleration"     value={v.eps_accel != null ? fmtPct(v.eps_accel) : null}
+      <MetricRow
+        label="Earnings Momentum"
+        desc="Are profits growing faster each quarter? Positive = gaining steam"
+        value={v.eps_accel != null ? fmtPct(v.eps_accel) : null}
         valueClass={uptrendColor(v.eps_accel)} />
-      <MetricRow label="FCF Inflection"       value={v.fcf_inflection ? '✅ Turned positive' : '—'}
+      <MetricRow
+        label="Turned Cash Profitable?"
+        desc="Recently went from burning cash to generating it — a major turning point"
+        value={v.fcf_inflection ? '✅ Yes — just turned positive' : 'Not yet'}
         valueClass={v.fcf_inflection ? 'text-emerald-400' : 'text-gray-500'} />
-      <MetricRow label="Rule of 40"           value={v.rule_of_40 != null ? `${fmt(v.rule_of_40, 0)}` : null}
+      <MetricRow
+        label="Growth + Profit Score"
+        desc="Revenue growth % + profit margin % combined — over 40 is healthy, 60+ is exceptional"
+        value={v.rule_of_40 != null ? `${fmt(v.rule_of_40, 0)}` : null}
         valueClass={v.rule_of_40 != null ? (v.rule_of_40 > 60 ? 'text-emerald-400' : v.rule_of_40 > 40 ? 'text-green-400' : v.rule_of_40 > 20 ? 'text-gray-300' : 'text-red-400') : ''} />
-      <MetricRow label="Analyst Upside"       value={fmtPct(v.analyst_upside)}
+      <MetricRow
+        label="Analyst Target Upside"
+        desc="How much further Wall Street analysts think the stock can rise"
+        value={fmtPct(v.analyst_upside)}
         valueClass={uptrendColor(v.analyst_upside)} />
     </div>
   )
@@ -178,23 +208,47 @@ function FinancialSection({ data }) {
   const gmChange = v.gross_margin_change
   return (
     <div className="space-y-0">
-      <MetricRow label="Gross Margin"         value={v.gross_margin != null ? `${fmt(v.gross_margin, 1)}%` : null}
-        note={gmChange != null ? `${gmChange > 0 ? '+' : ''}${fmt(gmChange, 0)} bps YoY` : null}
+      <MetricRow
+        label="Profit on Each Sale"
+        desc="% kept after cost of making the product — over 50% means strong pricing power"
+        value={v.gross_margin != null ? `${fmt(v.gross_margin, 1)}%` : null}
+        note={gmChange != null ? `${gmChange > 0 ? '+' : ''}${fmt(gmChange, 0)} bps vs last year` : null}
         valueClass={v.gross_margin != null ? (v.gross_margin > 50 ? 'text-green-400' : v.gross_margin > 30 ? 'text-gray-300' : 'text-yellow-400') : ''} />
-      <MetricRow label="Operating Margin"     value={v.op_margin != null ? `${fmt(v.op_margin, 1)}%` : null}
+      <MetricRow
+        label="Operating Profit %"
+        desc="% of revenue left after all business expenses — trending up is a great sign"
+        value={v.op_margin != null ? `${fmt(v.op_margin, 1)}%` : null}
         note={v.op_margin_trend != null ? `${v.op_margin_trend > 0 ? '▲' : '▼'}${Math.abs(v.op_margin_trend).toFixed(1)}pp` : null}
         valueClass={uptrendColor(v.op_margin)} />
-      <MetricRow label="Debt / Equity"        value={v.debt_to_equity != null ? `${fmt(v.debt_to_equity, 2)}x` : null}
+      <MetricRow
+        label="Debt Level"
+        desc="How much debt vs equity — under 1x is conservative, over 3x is risky"
+        value={v.debt_to_equity != null ? `${fmt(v.debt_to_equity, 2)}x` : null}
         valueClass={v.debt_to_equity != null ? (v.debt_to_equity < 1 ? 'text-green-400' : v.debt_to_equity > 3 ? 'text-red-400' : 'text-gray-300') : ''} />
-      <MetricRow label="Current Ratio"        value={v.current_ratio != null ? `${fmt(v.current_ratio, 2)}` : null}
+      <MetricRow
+        label="Short-Term Financial Cushion"
+        desc="Can the company pay its near-term bills? Over 2x means a comfortable buffer"
+        value={v.current_ratio != null ? `${fmt(v.current_ratio, 2)}x` : null}
         valueClass={v.current_ratio != null ? (v.current_ratio > 2 ? 'text-green-400' : v.current_ratio < 1 ? 'text-red-400' : 'text-gray-300') : ''} />
-      <MetricRow label="Cash / Debt"          value={v.cash_to_debt === 999 ? 'Debt-free 💰' : v.cash_to_debt != null ? `${fmt(v.cash_to_debt, 2)}x` : null}
+      <MetricRow
+        label="Cash vs Debt"
+        desc="How much cash the company holds relative to its debt — higher is safer"
+        value={v.cash_to_debt === 999 ? 'Debt-free 💰' : v.cash_to_debt != null ? `${fmt(v.cash_to_debt, 2)}x` : null}
         valueClass={v.cash_to_debt != null ? (v.cash_to_debt > 2 ? 'text-green-400' : v.cash_to_debt < 0.5 ? 'text-red-400' : 'text-gray-300') : ''} />
-      <MetricRow label="Buyback Yield"        value={v.buyback_yield != null ? `${fmt(v.buyback_yield, 1)}%` : null}
+      <MetricRow
+        label="Buying Back Own Stock"
+        desc="% of shares repurchased — signals management confidence and reduces share count"
+        value={v.buyback_yield != null ? `${fmt(v.buyback_yield, 1)}% of market cap` : null}
         valueClass={v.buyback_yield != null ? (v.buyback_yield > 3 ? 'text-green-400' : 'text-gray-300') : ''} />
-      <MetricRow label="Share Dilution (YoY)" value={fmtPct(v.dilution_yoy)}
+      <MetricRow
+        label="New Shares Created"
+        desc="Positive = more shares issued (dilutes your stake). Negative = buybacks (good)"
+        value={fmtPct(v.dilution_yoy)}
         valueClass={v.dilution_yoy != null ? (v.dilution_yoy < -2 ? 'text-green-400' : v.dilution_yoy > 10 ? 'text-red-400' : 'text-gray-300') : ''} />
-      <MetricRow label="R&D Intensity"        value={v.rd_intensity != null ? `${fmt(v.rd_intensity, 1)}% of rev` : null} />
+      <MetricRow
+        label="Innovation Spending"
+        desc="% of revenue reinvested in research and development"
+        value={v.rd_intensity != null ? `${fmt(v.rd_intensity, 1)}% of revenue` : null} />
     </div>
   )
 }
@@ -204,26 +258,49 @@ function NewsworthySection({ data }) {
   if (!data) return <p className="text-xs text-gray-600">No data available.</p>
   const v = data
   const sentiment = v.news_sentiment
-  const sentimentLabel = sentiment == null ? '—' : sentiment > 0.6 ? 'Bullish' : sentiment < 0.3 ? 'Bearish' : 'Neutral'
+  const sentimentLabel = sentiment == null ? '—' : sentiment > 0.6 ? 'Positive 🟢' : sentiment < 0.3 ? 'Negative 🔴' : 'Neutral 🟡'
   const sentimentColor = sentiment == null ? 'text-gray-400' : sentiment > 0.6 ? 'text-green-400' : sentiment < 0.3 ? 'text-red-400' : 'text-yellow-400'
   const mspr = v.insider_mspr
-  const insiderLabel = mspr == null ? '—' : mspr > 0.5 ? 'Strong net buying 🟢' : mspr > 0.2 ? 'Mild buying' : mspr < -0.3 ? 'Net selling 🔴' : 'Neutral'
+  const insiderLabel = mspr == null ? '—' : mspr > 0.5 ? 'Executives buying heavily 🟢' : mspr > 0.2 ? 'Mild buying' : mspr < -0.3 ? 'Executives selling 🔴' : 'Neutral'
 
   return (
     <div className="space-y-0">
-      <MetricRow label="News Sentiment"        value={sentimentLabel}    valueClass={sentimentColor} note={sentiment != null ? `(${fmt(sentiment, 2)})` : ''} />
-      <MetricRow label="Articles (14d)"        value={v.article_count_14d} />
-      <MetricRow label="Consec. Earnings Beats" value={v.consecutive_beats != null ? `${v.consecutive_beats} in a row` : null}
+      <MetricRow
+        label="News Tone"
+        desc="Overall tone of recent news coverage about this stock"
+        value={sentimentLabel} valueClass={sentimentColor} />
+      <MetricRow
+        label="Recent News Articles"
+        desc="Number of news articles in the last 2 weeks"
+        value={v.article_count_14d} />
+      <MetricRow
+        label="Earnings Beats in a Row"
+        desc="How many consecutive quarters the company beat analyst expectations"
+        value={v.consecutive_beats != null ? `${v.consecutive_beats} quarter${v.consecutive_beats !== 1 ? 's' : ''}` : null}
         valueClass={v.consecutive_beats >= 3 ? 'text-emerald-400' : v.consecutive_beats >= 2 ? 'text-green-400' : 'text-gray-300'} />
-      <MetricRow label="Insider Activity"      value={insiderLabel}
+      <MetricRow
+        label="Executive Buying/Selling"
+        desc="Are company insiders (CEOs, directors) buying or selling their own stock?"
+        value={insiderLabel}
         valueClass={mspr != null ? (mspr > 0.2 ? 'text-green-400' : mspr < -0.3 ? 'text-red-400' : 'text-gray-300') : ''} />
-      <MetricRow label="Squeeze Risk (0-8)"    value={v.squeeze_risk != null ? `${v.squeeze_risk}` : null}
+      <MetricRow
+        label="Short Squeeze Potential"
+        desc="Could investors betting against this stock be forced to buy, driving price up? (0–8 scale)"
+        value={v.squeeze_risk != null ? `${v.squeeze_risk} / 8` : null}
         valueClass={v.squeeze_risk != null ? (v.squeeze_risk > 5 ? 'text-orange-400' : v.squeeze_risk > 3 ? 'text-yellow-400' : 'text-gray-300') : ''} />
-      <MetricRow label="Short Interest"        value={v.short_interest_pct != null ? `${fmt(v.short_interest_pct, 1)}%` : null}
-        note={v.days_to_cover != null ? `${fmt(v.days_to_cover, 1)}d to cover` : ''} />
-      <MetricRow label="Unusual Call Activity" value={v.unusual_call_activity ? `Yes ⚡ (${v.call_vol_to_oi ? fmt(v.call_vol_to_oi, 2) : ''} vol/OI)` : 'No'}
+      <MetricRow
+        label="Investors Betting Against It"
+        desc="% of shares borrowed to short — high % means many investors expect the price to fall"
+        value={v.short_interest_pct != null ? `${fmt(v.short_interest_pct, 1)}% of float` : null}
+        note={v.days_to_cover != null ? `${fmt(v.days_to_cover, 1)} days to cover` : ''} />
+      <MetricRow
+        label="Unusual Options Activity"
+        desc="Are traders placing unusually large bullish bets through options contracts?"
+        value={v.unusual_call_activity ? `Yes ⚡` : 'Nothing unusual'}
         valueClass={v.unusual_call_activity ? 'text-amber-400' : 'text-gray-500'} />
-      <MetricRow label="Analyst Revisions (30d)"
+      <MetricRow
+        label="Analyst Rating Changes (30d)"
+        desc="How many analysts upgraded vs downgraded their recommendation recently"
         value={v.analyst_upgrades != null ? `▲${v.analyst_upgrades} upgrades  ▼${v.analyst_downgrades ?? 0} downgrades` : null}
         valueClass={(v.analyst_upgrades ?? 0) > (v.analyst_downgrades ?? 0) ? 'text-green-400' : 'text-red-400'} />
       {v.sentiment_divergence && (
@@ -336,6 +413,14 @@ function AgentTabs({ votes }) {
 }
 
 // ── Chairman rationale bullets ────────────────────────────────────────────────
+function convictionLabel(score) {
+  if (score == null) return ''
+  if (score >= 0.70) return 'High conviction'
+  if (score >= 0.55) return 'Moderate conviction'
+  if (score >= 0.45) return 'Mixed signals'
+  return 'Low conviction'
+}
+
 function ChairmanRationale({ rationale, decision, score, priceTargets, stopLoss }) {
   if (!rationale) return null
   const lines = rationale.split('\n').filter(l => l.trim().startsWith('•'))
@@ -346,10 +431,12 @@ function ChairmanRationale({ rationale, decision, score, priceTargets, stopLoss 
       <div className="flex items-center gap-3 mb-3">
         <span className="text-2xl">🏛️</span>
         <div>
-          <div className="text-xs text-gray-500 uppercase tracking-wider">Chairman's Verdict</div>
+          <div className="text-xs text-gray-500 uppercase tracking-wider">Committee's Final Verdict</div>
           <div className="flex items-center gap-2">
             <span className={`text-xl font-black ${cfg.color}`}>{decision}</span>
-            <span className="text-xs text-gray-500">score {score?.toFixed(3)}</span>
+            {score != null && (
+              <span className="text-xs text-gray-500">{convictionLabel(score)}</span>
+            )}
           </div>
         </div>
       </div>
@@ -364,14 +451,14 @@ function ChairmanRationale({ rationale, decision, score, priceTargets, stopLoss 
 
       {(priceTargets || stopLoss) && (
         <div className="mt-4 pt-3 border-t border-white/10 grid grid-cols-4 gap-2 text-center">
-          {['1m', '6m', '1y'].map(k => (
+          {[['1m', '1 Month'], ['6m', '6 Months'], ['1y', '1 Year']].map(([k, label]) => (
             <div key={k} className="rounded-lg bg-black/20 px-2 py-1.5">
-              <div className="text-[10px] text-gray-500 uppercase">{k}</div>
+              <div className="text-[10px] text-gray-500">{label}</div>
               <div className="text-xs font-semibold text-gray-200">{fmtPrice(priceTargets?.[k])}</div>
             </div>
           ))}
           <div className="rounded-lg bg-red-900/30 px-2 py-1.5">
-            <div className="text-[10px] text-gray-500 uppercase">Stop</div>
+            <div className="text-[10px] text-gray-500">Stop Loss</div>
             <div className="text-xs font-semibold text-red-400">{fmtPrice(stopLoss)}</div>
           </div>
         </div>
@@ -410,43 +497,43 @@ function AnalysisResult({ result, onReset }) {
         {/* ── Price trio ── */}
         <div className="flex gap-3 mt-4 flex-col sm:flex-row">
           <PriceCard
-            label="Spot Price"
+            label="Current Price"
             icon="💹"
             price={result.spot_price || result.current_price}
           />
           <PriceCard
-            label="DCF Fair Value"
+            label="Estimated True Value"
             icon="📐"
             price={result.dcf_price}
             upside={dcfUpside}
-            subtext="FMP intrinsic value model"
+            subtext="Based on projected future cash flows"
             highlight={!!result.dcf_price}
           />
           <PriceCard
-            label="Wall Street Target"
+            label="Analyst Target Price"
             icon="🏦"
             price={result.ws_price}
             upside={result.ws_upside_pct}
             subtext={result.ws_ci_lo && result.ws_ci_hi
-              ? `95% CI: $${fmt(result.ws_ci_lo)} – $${fmt(result.ws_ci_hi)}`
+              ? `Confidence range: $${fmt(result.ws_ci_lo)} – $${fmt(result.ws_ci_hi)}`
               : result.ws_price_high && result.ws_price_low
                 ? `Range: $${fmt(result.ws_price_low)} – $${fmt(result.ws_price_high)}`
-                : 'Trust-weighted consensus'}
+                : 'Wall Street average target'}
             highlight={!!result.ws_price}
           />
         </div>
       </div>
 
       {/* ── Three collapsible sections ── */}
-      <Section title="Last Valuation with Growth Potential" icon="📈" defaultOpen>
+      <Section title="Is It Worth the Price?" icon="📈" defaultOpen>
         <ValuationSection data={result.sections?.valuation} />
       </Section>
 
-      <Section title="Financial Key Points" icon="💰">
+      <Section title="Company Financial Health" icon="💰">
         <FinancialSection data={result.sections?.financial} />
       </Section>
 
-      <Section title="Noteworthy in Consideration" icon="📰">
+      <Section title="News & Market Buzz" icon="📰">
         <NewsworthySection data={result.sections?.newsworthy} />
       </Section>
 

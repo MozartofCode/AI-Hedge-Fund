@@ -16,7 +16,7 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
-  "rationale": "1 plain-English sentence — name the single most important macro signal (e.g. 'Interest rates are falling and the market is in a healthy uptrend, which is a good backdrop for growth stocks.')",
+  "rationale": "1 plain-English sentence an everyday investor would understand — avoid terms like 'yield curve', 'credit spreads', 'VIX spike'. Say what market conditions actually mean for investors (e.g. 'The overall market is in a healthy uptrend with interest rates falling — a strong environment for growth stocks.' or 'The market looks nervous right now with rising rates and investors pulling back from risky bets.').",
   "suggested_position_size_pct": 0-12,
   "risk_off": false
 }

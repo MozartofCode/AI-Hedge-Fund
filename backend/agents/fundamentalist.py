@@ -134,7 +134,7 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
-  "rationale": "1 plain-English sentence — name the single most important financial signal (e.g. 'Revenue grew 45% last quarter and margins are expanding, making the valuation look reasonable.')",
+  "rationale": "1 plain-English sentence an everyday investor would understand — no jargon like 'FCF inflection', 'EPS acceleration', 'Rule of 40', 'PEG ratio'. Say what the numbers actually mean (e.g. 'Revenue is growing 40% year-over-year and profit margins are improving, which makes the current price look reasonable.' or 'The company is losing money and paying its executives with new shares, which is eating into investor returns.').",
   "suggested_position_size_pct": 0-12,
   "valuation_score": 0.0-1.0,
   "growth_score": 0.0-1.0,

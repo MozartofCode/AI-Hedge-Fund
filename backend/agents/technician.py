@@ -387,7 +387,7 @@ Return ONLY a valid JSON object — no markdown, no explanation, just JSON:
 {
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0-1.0,
-  "rationale": "1 plain-English sentence naming the single most important signal (e.g. 'Price just swept the swing-low liquidity and snapped back above the weekly anchored VWAP inside an active bullish order block — high-probability reversal setup.')",
+  "rationale": "1 plain-English sentence an everyday investor would understand — no jargon like 'order blocks', 'VWAP', 'RSI', 'liquidity sweep', 'BOS'. Say what the chart is actually doing (e.g. 'The stock is in a clear uptrend and just bounced off support, suggesting buyers are still in control.' or 'The stock is breaking down below its 200-day average on rising volume — momentum is clearly bearish.').",
   "suggested_position_size_pct": 0-12,
   "momentum_score": 0.0-1.0
 }
