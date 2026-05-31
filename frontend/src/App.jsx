@@ -41,7 +41,6 @@ export default function App() {
                     : 'text-gray-500 hover:text-gray-300 hover:bg-white/4'
                 }`}
               >
-                <span className="mr-1.5 opacity-70">{t.icon}</span>
                 {t.label}
                 {tab === t.id && (
                   <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-indigo-500 rounded-full" />

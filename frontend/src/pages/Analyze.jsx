@@ -594,7 +594,7 @@ function SearchBox({ onRun, loading }) {
   }
 
   return (
-    <div className="relative w-full max-w-xl mx-auto">
+    <div className="relative w-full max-w-2xl mx-auto">
       <div className="flex gap-3">
         <div className="flex-1 relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-base select-none pointer-events-none">🔍</span>
@@ -657,14 +657,6 @@ function useGreeting() {
   return 'Good evening'
 }
 
-// ── Quick-start suggestion cards ─────────────────────────────────────────────
-const SUGGESTIONS = [
-  { ticker: 'NVDA', label: 'Deep dive on NVDA',       sub: 'AI chip leader — still room to run?' },
-  { ticker: 'TSLA', label: 'Is TSLA a buy right now?', sub: 'Valuation, sentiment & technicals'   },
-  { ticker: 'RKLB', label: 'Analyze RKLB',             sub: 'Space-tech underdog — upside play?'  },
-  { ticker: 'AAPL', label: "Apple's earnings outlook", sub: 'Services growth vs hardware cycle'   },
-]
-
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function Analyze() {
   const [loading, setLoading] = useState(false)
@@ -712,34 +704,14 @@ export default function Analyze() {
 
         {/* ── Greeting ── */}
         <div className="text-center space-y-3">
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-gradient-to-br from-white via-gray-100 to-gray-400 bg-clip-text text-transparent">
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight bg-gradient-to-br from-white via-gray-100 to-gray-400 bg-clip-text text-transparent pb-2 leading-tight">
             {greeting}, Investor.
           </h1>
-          <p className="text-gray-500 text-base max-w-sm mx-auto leading-relaxed">
-            5 AI agents debate every stock. What would you like to analyze today?
-          </p>
         </div>
 
         {/* ── Search ── */}
         <div className="w-full">
           <SearchBox onRun={run} loading={loading} />
-        </div>
-
-        {/* ── Suggestion cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
-          {SUGGESTIONS.map(s => (
-            <button
-              key={s.ticker}
-              onClick={() => run(s.ticker)}
-              className="text-left px-4 py-3.5 rounded-2xl border border-white/8 bg-gray-900/50
-                         hover:bg-gray-800/70 hover:border-white/15 transition-all group"
-            >
-              <div className="text-sm font-semibold text-gray-200 group-hover:text-white leading-snug">
-                {s.label}
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5 leading-snug">{s.sub}</div>
-            </button>
-          ))}
         </div>
 
         {/* ── Error ── */}
