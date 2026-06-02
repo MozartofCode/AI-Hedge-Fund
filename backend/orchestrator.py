@@ -182,15 +182,16 @@ async def run_committee_for_ticker(
     if force_sell or take_profit:
         decision      = "SELL"
         position_size = _BASE_POSITION_PCT
+    elif score <= SELL_THRESHOLD and holds_ticker:
+        # Score-based exit: check BEFORE veto so "no pyramid" veto doesn't block sells
+        decision      = "SELL"
+        position_size = _BASE_POSITION_PCT
     elif risk_vote.get("veto"):
         decision      = "HOLD"
         position_size = 0.0
     elif score >= BUY_THRESHOLD:
         decision      = "BUY"
         position_size = _conviction_position_size(score, atr_pct)
-    elif score <= SELL_THRESHOLD and holds_ticker:
-        decision      = "SELL"
-        position_size = _BASE_POSITION_PCT
     else:
         decision      = "HOLD"
         position_size = 0.0
@@ -356,15 +357,16 @@ async def analyze_ticker(ticker: str, market: str = 'US') -> dict:
     if force_sell or take_profit:
         decision      = "SELL"
         position_size = _BASE_POSITION_PCT
+    elif score <= SELL_THRESHOLD and holds_ticker:
+        # Score-based exit: check BEFORE veto so "no pyramid" veto doesn't block sells
+        decision      = "SELL"
+        position_size = _BASE_POSITION_PCT
     elif risk_vote.get("veto"):
         decision      = "HOLD"
         position_size = 0.0
     elif score >= BUY_THRESHOLD:
         decision      = "BUY"
         position_size = _conviction_position_size(score, atr_pct)
-    elif score <= SELL_THRESHOLD and holds_ticker:
-        decision      = "SELL"
-        position_size = _BASE_POSITION_PCT
     else:
         decision      = "HOLD"
         position_size = 0.0

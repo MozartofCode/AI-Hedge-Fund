@@ -3,10 +3,15 @@ Paper trading broker — replaces Alpaca entirely.
 Prices come from yfinance (free, no API key).
 Positions and cash are stored in PostgreSQL, keyed by market.
 """
+import time
 import uuid
 from datetime import datetime
 
 import yfinance as yf
+
+# ── Portfolio cache (application-level, invalidated on buy/sell) ──────────────
+_portfolio_cache: dict = {}   # key: market → {"data": ..., "expires": float}
+_PORTFOLIO_CACHE_TTL = 60     # seconds
 
 from backend.db.session import AsyncSessionLocal
 from backend.db.crud import (
@@ -61,8 +66,18 @@ def get_historical_bars(ticker: str, days: int = 30) -> list:
 
 # ── Portfolio state ───────────────────────────────────────────────────────────
 
+def _invalidate_portfolio_cache(market: str):
+    _portfolio_cache.pop(market.upper(), None)
+
+
 async def get_portfolio(market: str = 'US') -> dict:
-    """Read cash + positions from DB for a given market, enrich with live prices."""
+    """Read cash + positions from DB for a given market, enrich with live prices.
+    Result is cached for 60 s and invalidated whenever a trade is placed."""
+    mkt = market.upper()
+    cached = _portfolio_cache.get(mkt)
+    if cached and time.monotonic() < cached["expires"]:
+        return cached["data"]
+
     async with AsyncSessionLocal() as db:
         portfolio = await get_paper_portfolio(db, market)
         positions_rows = await get_paper_positions(db, market)
@@ -96,13 +111,15 @@ async def get_portfolio(market: str = 'US') -> dict:
         })
         total_market_value += mkt_val
 
-    return {
-        "market": market.upper(),
+    result = {
+        "market": mkt,
         "total_value": round(cash + total_market_value, 2),
         "cash": round(cash, 2),
         "buying_power": round(cash, 2),
         "positions": enriched,
     }
+    _portfolio_cache[mkt] = {"data": result, "expires": time.monotonic() + _PORTFOLIO_CACHE_TTL}
+    return result
 
 
 # ── Order execution ───────────────────────────────────────────────────────────
@@ -120,6 +137,7 @@ async def place_order(
             f"{market} market is closed — orders only accepted during trading hours"
         )
 
+    _invalidate_portfolio_cache(market)   # stale data the moment a trade starts
     current_price = get_current_price(ticker)
 
     async with AsyncSessionLocal() as db:

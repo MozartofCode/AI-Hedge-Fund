@@ -600,7 +600,6 @@ export default function Portfolio() {
   const [lastUpdated, setLastUpdated]     = useState(null)
   const [refreshing, setRefreshing]       = useState(false)
   const [selectedPosition, setSelectedPosition] = useState(null)
-  const [showAnalyze, setShowAnalyze]     = useState(false)
   const [marketsOpen, setMarketsOpen]     = useState({})
   const [ago, setAgo]                     = useState('')
 
@@ -691,11 +690,6 @@ export default function Portfolio() {
         />
       )}
 
-      {/* Analyze panel */}
-      {showAnalyze && (
-        <AnalyzePanel market={market} onClose={() => setShowAnalyze(false)} />
-      )}
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
 
         {/* ── Top bar ── */}
@@ -718,14 +712,6 @@ export default function Portfolio() {
           </span>
 
           <div className="flex-1" />
-
-          {/* Analyze button */}
-          <button
-            onClick={() => setShowAnalyze(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-600/30 transition-colors text-sm font-medium"
-          >
-            <span>🔬</span> Analyze
-          </button>
 
           {/* Refresh */}
           <div className="flex items-center gap-2">

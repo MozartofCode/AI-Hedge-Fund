@@ -24,8 +24,8 @@ from backend.db.crud import (
 )
 
 # ── Decision thresholds ───────────────────────────────────────────────────────
-FX_BUY_THRESHOLD  = 0.55   # tighter than stocks — forex has more noise
-FX_SELL_THRESHOLD = 0.45
+FX_BUY_THRESHOLD  = 0.52   # match stock threshold — generate more signals
+FX_SELL_THRESHOLD = 0.48   # raised from 0.45 — close positions faster on fade
 
 _FX_WEIGHTS = {
     "fx_technician": 0.35,
@@ -145,15 +145,29 @@ async def run_committee_for_pair(
     veto        = risk_vote.get("veto", False)
     stop_loss_r = risk_vote.get("stop_loss_rate")
 
+    # Detect position flip: score contradicts existing position direction → close it.
+    # This must happen BEFORE the veto check so the correlation/duplicate veto
+    # does not block exits (same fix as the stocks "no pyramid" veto bug).
+    positions    = portfolio.get("positions", [])
+    existing_pos = next((p for p in positions if p["pair"] == pair.upper()), None)
+    score_dir    = "long" if score >= FX_BUY_THRESHOLD else ("short" if score <= FX_SELL_THRESHOLD else None)
+    should_close = (
+        existing_pos is not None
+        and score_dir is not None
+        and existing_pos["direction"] != score_dir
+        and not force_close
+        and not take_profit
+    )
+
     # Final decision
-    if force_close or take_profit:
-        final_decision = "SELL"
+    if force_close or take_profit or should_close:
+        final_decision = "SELL"   # will call close_position()
     elif veto:
         final_decision = "HOLD"
     elif score >= FX_BUY_THRESHOLD:
         final_decision = "BUY"
     elif score <= FX_SELL_THRESHOLD:
-        final_decision = "SELL"
+        final_decision = "SELL"   # open new position (no existing opposite)
     else:
         final_decision = "HOLD"
 
@@ -206,12 +220,19 @@ async def run_committee_for_pair(
     async with AsyncSessionLocal() as db:
         session = await create_session(db, pair, "FOREX")
         for v in [*agent_votes, {**risk_vote, "agent": "fx_risk_manager"}]:
-            await save_agent_vote(db, session.id, v)
+            await save_agent_vote(db, session.id, {
+                "agent":      v.get("agent", "unknown"),
+                "action":     v.get("action", "HOLD"),
+                "confidence": v.get("confidence", 0.0),
+                "rationale":  v.get("rationale", ""),
+                "raw_data":   v,
+            })
 
     # Execute trade
     if final_decision in ("BUY", "SELL") and is_forex_market_open():
         try:
-            if force_close or take_profit:
+            if force_close or take_profit or should_close:
+                # Close existing position cleanly (bypasses correlation-veto race)
                 order = await close_position(pair)
             else:
                 order = await place_order(pair, direction, position_pct, stop_loss_r)
