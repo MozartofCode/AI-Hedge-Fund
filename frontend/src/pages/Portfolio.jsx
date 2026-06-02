@@ -239,26 +239,6 @@ function PositionModal({ position, market, onClose }) {
 
 // ── Analyze Panel ─────────────────────────────────────────────────────────────
 
-const AGENT_META = {
-  technician:     { label: 'The Technician',     icon: '📈', role: 'Technical Analysis' },
-  fundamentalist: { label: 'The Fundamentalist', icon: '📊', role: 'Fundamental Analysis' },
-  newshound:      { label: 'The Newshound',       icon: '📰', role: 'News & Sentiment' },
-  macro_watcher:  { label: 'The Macro Watcher',  icon: '🌍', role: 'Macro & Sectors' },
-  risk_manager:   { label: 'The Risk Manager',   icon: '🛡️', role: 'Risk & Portfolio' },
-}
-
-const DECISION_BG = {
-  BUY:  'bg-green-500/10 border-green-500/30 text-green-400',
-  SELL: 'bg-red-500/10 border-red-500/30 text-red-400',
-  HOLD: 'bg-gray-500/10 border-gray-600/30 text-gray-400',
-}
-
-const ACTION_STYLE_A = {
-  BUY:  { badge: 'badge-buy',  bar: 'bg-green-500' },
-  SELL: { badge: 'badge-sell', bar: 'bg-red-500' },
-  HOLD: { badge: 'badge-hold', bar: 'bg-gray-500' },
-}
-
 const STEPS = [
   { label: 'Fetching technical indicators', icon: '📈' },
   { label: 'Pulling fundamental data',       icon: '📊' },
@@ -304,165 +284,177 @@ const TR_SUGGESTIONS  = ['THYAO.IS', 'ASELS.IS', 'KCHOL.IS', 'GARAN.IS', 'FROTO.
 const NG_SUGGESTIONS  = ['MTNN.LG', 'DANGCEM.LG', 'GTCO.LG', 'ZENITHBANK.LG']
 const MARKET_SUGGESTIONS = { US: US_SUGGESTIONS, BR: BR_SUGGESTIONS, AR: AR_SUGGESTIONS, TR: TR_SUGGESTIONS, NG: NG_SUGGESTIONS }
 
-// ── Analysis Result (Chairman hero + collapsible agent strip) ─────────────────
+// ── Analysis Result — valuation numbers + technical + fundamental ─────────────
 
-function AnalysisResult({ result, onRerun }) {
-  const [showAgents, setShowAgents] = useState(false)
+function ScoreBar({ value, color }) {
+  if (value == null) return null
+  return (
+    <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
+      <div className={`h-1 rounded-full ${color}`} style={{ width: `${Math.round(value * 100)}%` }} />
+    </div>
+  )
+}
 
-  const decision  = result.decision ?? 'HOLD'
-  const decStyle  = DECISION_BG[decision] ?? DECISION_BG.HOLD
-  const decColor  = decision === 'BUY' ? 'text-green-400' : decision === 'SELL' ? 'text-red-400' : 'text-gray-400'
+function AgentCard({ icon, label, vote }) {
+  if (!vote) return null
+  const action = vote.action ?? 'HOLD'
+  const conf   = vote.confidence ?? 0
+  const badgeCls = action === 'BUY'
+    ? 'bg-green-500/20 text-green-400'
+    : action === 'SELL'
+    ? 'bg-red-500/20 text-red-400'
+    : 'bg-gray-600/30 text-gray-400'
 
-  // Parse rationale into bullet lines (lines starting with •)
-  const rawRationale = result.chairman_rationale ?? ''
-  const bulletLines  = rawRationale
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l.startsWith('•'))
-
-  // If no bullets parsed, fall back to a single block
-  const hasStructured = bulletLines.length > 0
+  const subScores = [
+    { label: 'Valuation',     val: vote.valuation_score },
+    { label: 'Growth',        val: vote.growth_score },
+    { label: 'Profitability', val: vote.profitability_score },
+    { label: 'Estimates',     val: vote.revisions_score },
+  ].filter(s => s.val != null)
 
   return (
-    <div className="space-y-3">
+    <div className="bg-gray-800/40 rounded-xl p-3.5 border border-gray-700/30 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-300">{icon} {label}</span>
+        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${badgeCls}`}>{action}</span>
+      </div>
 
-      {/* ── Chairman hero card ── */}
-      <div className={`rounded-2xl border p-5 ${decStyle}`}>
-        {/* Verdict row */}
-        <div className="flex items-center gap-4 mb-4">
-          <div className={`text-5xl font-black ${decColor}`}>{decision}</div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Chairman's Verdict · {result.ticker}</div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {result.position_size_pct > 0 && (
-                <span className="text-sm font-semibold text-gray-300">{result.position_size_pct}% position</span>
-              )}
-              {result.risk_off && (
-                <span className="text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/25 rounded-full px-2 py-0.5">⚠️ Risk-off market</span>
-              )}
-            </div>
+      {vote.rationale && (
+        <p className="text-xs text-gray-400 leading-snug">{vote.rationale}</p>
+      )}
+
+      {subScores.length > 0 && (
+        <div className="space-y-1.5 pt-0.5">
+          {subScores.map(({ label: lbl, val }) => {
+            const barColor = val >= 0.6 ? 'bg-green-500' : val >= 0.4 ? 'bg-yellow-500' : 'bg-red-500'
+            return (
+              <div key={lbl}>
+                <div className="flex justify-between text-[10px] text-gray-600 mb-0.5">
+                  <span>{lbl}</span><span>{Math.round(val * 100)}%</span>
+                </div>
+                <ScoreBar value={val} color={barColor} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div>
+        <div className="flex justify-between text-[10px] text-gray-600 mb-0.5">
+          <span>Conviction</span><span>{Math.round(conf * 100)}%</span>
+        </div>
+        <ScoreBar value={conf} color="bg-indigo-500" />
+      </div>
+    </div>
+  )
+}
+
+function AnalysisResult({ result, onRerun }) {
+  const decision = result.decision ?? 'HOLD'
+  const cur      = result.current_price
+  const dcf      = result.dcf_price
+  const ws       = result.ws_price
+  const wsLo     = result.ws_price_low
+  const wsHi     = result.ws_price_high
+
+  const dcfDiff = (cur && dcf) ? ((dcf - cur) / cur * 100) : null
+  const wsDiff  = (cur && ws)  ? ((ws  - cur) / cur * 100) : null
+
+  const decCls = decision === 'BUY'
+    ? 'text-green-400 border-green-500/40 bg-green-500/10'
+    : decision === 'SELL'
+    ? 'text-red-400 border-red-500/40 bg-red-500/10'
+    : 'text-gray-400 border-gray-600/40 bg-gray-500/10'
+
+  const techVote = result.agent_votes?.find(v => v.agent_name === 'technician')
+  const fundVote = result.agent_votes?.find(v => v.agent_name === 'fundamentalist')
+
+  return (
+    <div className="space-y-4">
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          {result.company_name && (
+            <div className="text-xs text-gray-500 mb-0.5">{result.company_name}</div>
+          )}
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-black text-white">
+              {cur ? `$${cur.toFixed(2)}` : '—'}
+            </span>
+            <span className="text-sm text-gray-500">{result.ticker}</span>
           </div>
         </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={`text-sm font-bold px-3 py-1 rounded-xl border ${decCls}`}>
+            {decision}
+          </span>
+          <button
+            onClick={onRerun}
+            className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+            title="Re-run analysis"
+          >↺</button>
+        </div>
+      </div>
 
-        {/* Bullet rationale */}
-        {hasStructured ? (
-          <ul className="space-y-2.5 mb-4">
-            {bulletLines.map((line, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-gray-200 leading-snug">
-                <span className="flex-shrink-0 mt-0.5">{line.slice(0, 2)}</span>
-                <span>{line.slice(2).trim()}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-300 leading-relaxed mb-4">{rawRationale}</p>
-        )}
+      {/* Valuation block */}
+      <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-700/30">
+        <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-3">
+          Valuation
+        </div>
 
-        {/* Price targets */}
-        {result.price_targets && (
-          <div className="border-t border-white/10 pt-4">
-            <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Price Targets</div>
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {[
-                { label: '1 Month',  key: '1m'  },
-                { label: '6 Months', key: '6m'  },
-                { label: '1 Year',   key: '1y'  },
-              ].map(({ label, key }) => {
-                const target = result.price_targets[key]
-                const current = result.current_price
-                const pct = (current && target)
-                  ? ((target - current) / current * 100)
-                  : null
-                const up = pct == null ? null : pct >= 0
-                return (
-                  <div key={key} className="bg-black/20 rounded-xl p-3 text-center">
-                    <div className="text-xs text-gray-500 mb-1">{label}</div>
-                    <div className="text-base font-bold text-white">
-                      {target ? `$${Number(target).toFixed(2)}` : '—'}
-                    </div>
-                    {pct != null && (
-                      <div className={`text-xs font-semibold mt-0.5 ${up ? 'text-green-400' : 'text-red-400'}`}>
-                        {up ? '+' : ''}{pct.toFixed(1)}%
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            {result.stop_loss && result.current_price && (
-              <div className="flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl px-3.5 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-red-400 text-sm">🛑</span>
-                  <span className="text-xs font-medium text-red-300">Stop Loss</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-bold text-red-300">${Number(result.stop_loss).toFixed(2)}</span>
-                  <span className="text-xs text-red-400 ml-2">
-                    ({((result.stop_loss - result.current_price) / result.current_price * 100).toFixed(1)}%)
-                  </span>
-                </div>
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <div>
+            <div className="text-[10px] text-gray-600 mb-1">Current Price</div>
+            <div className="text-lg font-bold text-white">{cur ? `$${cur.toFixed(2)}` : '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-600 mb-1">DCF Fair Value</div>
+            <div className="text-lg font-bold text-white">{dcf ? `$${dcf.toFixed(2)}` : '—'}</div>
+            {dcfDiff != null && (
+              <div className={`text-[10px] font-semibold mt-0.5 ${dcfDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {dcfDiff >= 0 ? '+' : ''}{dcfDiff.toFixed(1)}% vs price
               </div>
             )}
           </div>
-        )}
-      </div>
-
-      {/* ── Agent vote strip ── */}
-      <div>
-        <button
-          onClick={() => setShowAgents(s => !s)}
-          className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-300 transition-colors w-full mb-2"
-        >
-          <div className="flex items-center gap-1.5 flex-1">
-            {result.agent_votes?.map(v => {
-              const meta  = AGENT_META[v.agent_name] ?? { icon: '🤖' }
-              const color = v.action === 'BUY' ? 'text-green-400' : v.action === 'SELL' ? 'text-red-400' : 'text-gray-400'
-              return (
-                <span key={v.agent_name} className={`text-sm ${color}`} title={`${meta.icon} ${v.action}`}>
-                  {meta.icon}
-                </span>
-              )
-            })}
-            <span className="ml-1">Agent breakdown</span>
+          <div>
+            <div className="text-[10px] text-gray-600 mb-1">Wall St. Target</div>
+            <div className="text-lg font-bold text-white">{ws ? `$${ws.toFixed(2)}` : '—'}</div>
+            {wsDiff != null && (
+              <div className={`text-[10px] font-semibold mt-0.5 ${wsDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {wsDiff >= 0 ? '+' : ''}{wsDiff.toFixed(1)}% upside
+              </div>
+            )}
           </div>
-          <span>{showAgents ? '▲ Hide' : '▼ Show'}</span>
-        </button>
+        </div>
 
-        {showAgents && (
-          <div className="space-y-1.5">
-            {result.agent_votes?.map(v => {
-              const meta    = AGENT_META[v.agent_name] ?? { label: v.agent_name, icon: '🤖', role: '' }
-              const style   = ACTION_STYLE_A[v.action] ?? ACTION_STYLE_A.HOLD
-              const confPct = Math.round((v.confidence ?? 0) * 100)
-              const isRM    = v.agent_name === 'risk_manager'
-              return (
-                <div
-                  key={v.agent_name}
-                  className={`bg-gray-800/40 rounded-xl px-3.5 py-2.5 border ${v.veto ? 'border-red-500/30' : 'border-gray-700/30'}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-base leading-none flex-shrink-0">{meta.icon}</span>
-                    <span className="text-xs font-medium text-gray-300 flex-1 min-w-0 truncate">{meta.label}</span>
-                    {v.veto && <span className="text-xs font-bold text-red-400">VETO</span>}
-                    {!isRM && <span className="text-xs text-gray-500">{confPct}%</span>}
-                    <span className={style.badge + ' text-xs py-0 px-1.5'}>{v.action ?? 'HOLD'}</span>
-                  </div>
-                  {v.rationale && (
-                    <p className="text-xs text-gray-500 leading-snug mt-1.5 pl-6">{v.rationale}</p>
-                  )}
-                </div>
-              )
-            })}
+        {/* Analyst range bar */}
+        {wsLo != null && wsHi != null && cur != null && wsHi > wsLo && (
+          <div>
+            <div className="flex justify-between text-[10px] text-gray-600 mb-1">
+              <span>Low ${wsLo.toFixed(2)}</span>
+              <span>High ${wsHi.toFixed(2)}</span>
+            </div>
+            <div className="relative h-2 bg-gray-700 rounded-full overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-red-500/40 via-yellow-500/40 to-green-500/40" />
+              <div
+                className="absolute top-0.5 bottom-0.5 w-px bg-white shadow rounded-full"
+                style={{ left: `${Math.max(1, Math.min(99, (cur - wsLo) / (wsHi - wsLo) * 100)).toFixed(1)}%` }}
+              />
+            </div>
+            <div className="text-[10px] text-gray-600 mt-1 text-center">
+              Price is at {Math.round((cur - wsLo) / (wsHi - wsLo) * 100)}% of the analyst range
+            </div>
           </div>
         )}
       </div>
 
-      {/* Re-run */}
-      <div className="text-center">
-        <button onClick={onRerun} className="text-xs text-gray-600 hover:text-gray-400 transition-colors underline underline-offset-2">
-          ↺ Run analysis again
-        </button>
+      {/* Technical + Fundamental */}
+      <div className="grid grid-cols-2 gap-3">
+        <AgentCard icon="📈" label="Technical" vote={techVote} />
+        <AgentCard icon="📊" label="Fundamental" vote={fundVote} />
       </div>
+
     </div>
   )
 }
@@ -600,6 +592,7 @@ export default function Portfolio() {
   const [lastUpdated, setLastUpdated]     = useState(null)
   const [refreshing, setRefreshing]       = useState(false)
   const [selectedPosition, setSelectedPosition] = useState(null)
+  const [showAnalyze, setShowAnalyze]     = useState(false)
   const [marketsOpen, setMarketsOpen]     = useState({})
   const [ago, setAgo]                     = useState('')
 
@@ -690,6 +683,10 @@ export default function Portfolio() {
         />
       )}
 
+      {showAnalyze && (
+        <AnalyzePanel market={market} onClose={() => setShowAnalyze(false)} />
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
 
         {/* ── Top bar ── */}
@@ -712,6 +709,14 @@ export default function Portfolio() {
           </span>
 
           <div className="flex-1" />
+
+          {/* Analyze button */}
+          <button
+            onClick={() => setShowAnalyze(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-600/30 transition-colors text-sm font-medium"
+          >
+            <span>🔬</span> Analyze
+          </button>
 
           {/* Refresh */}
           <div className="flex items-center gap-2">
