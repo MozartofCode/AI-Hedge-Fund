@@ -417,7 +417,7 @@ def _get_fundamental_data(ticker: str) -> dict:
     return data
 
 
-def get_vote(ticker: str) -> dict:
+def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dict:
     try:
         d = _get_fundamental_data(ticker)
         profile, income, balance = d["profile"], d["income"], d["balance"]
@@ -728,6 +728,8 @@ def get_vote(ticker: str) -> dict:
             SYSTEM_PROMPT,
             f"Fundamental analysis for {ticker}: {json.dumps(market_data)}",
             "fundamentalist",
+            model=model,
+            provider=provider,
         )
 
         # ── Valuation engine (from Fair Value Valuation Engine) ───────────────

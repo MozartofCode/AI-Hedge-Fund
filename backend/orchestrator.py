@@ -5,6 +5,7 @@ from datetime import datetime
 
 from backend.agents.base_agent import (
     call_claude, CHAIRMAN_MODEL, CHAIRMAN_SCHEDULE_MODEL, get_daily_spend,
+    scheduled_agent_config, scheduled_chairman_config,
 )
 from backend.agents import technician, fundamentalist, newshound, macro_watcher, risk_manager
 from backend.broker.paper_broker import get_portfolio, place_order
@@ -155,12 +156,14 @@ def _conviction_position_size(score: float, atr_pct: float = None) -> float:
 async def run_committee_for_ticker(
     ticker: str, portfolio: dict, peak_value: float, market: str = 'US'
 ) -> dict:
-    # Run 4 data agents in parallel
+    # Run 4 data agents in parallel — automatic trader uses the scheduled provider
+    # (Groq by default; configurable via SCHEDULED_PROVIDER).
+    ag_model, ag_provider = scheduled_agent_config()
     tech_vote, fund_vote, news_vote, macro_vote = await asyncio.gather(
-        asyncio.to_thread(technician.get_vote, ticker),
-        asyncio.to_thread(fundamentalist.get_vote, ticker),
-        asyncio.to_thread(newshound.get_vote, ticker),
-        asyncio.to_thread(macro_watcher.get_vote, ticker),
+        asyncio.to_thread(technician.get_vote, ticker, ag_model, ag_provider),
+        asyncio.to_thread(fundamentalist.get_vote, ticker, ag_model, ag_provider),
+        asyncio.to_thread(newshound.get_vote, ticker, ag_model, ag_provider),
+        asyncio.to_thread(macro_watcher.get_vote, ticker, ag_model, ag_provider),
     )
 
     agent_votes = [tech_vote, fund_vote, news_vote, macro_vote]
@@ -227,12 +230,14 @@ async def run_committee_for_ticker(
                 for v in agent_votes
             ],
         }
+        ch_model, ch_provider = scheduled_chairman_config()
         chairman_out = call_claude(
             CHAIRMAN_SYSTEM,
             f"Committee analysis: {json.dumps(chairman_input)}",
             "chairman",
-            max_tokens=300,   # Haiku is concise — 300 tokens is plenty for 3-bullet rationale
-            model=CHAIRMAN_SCHEDULE_MODEL,  # Haiku for batch runs — 15× cheaper than Sonnet
+            max_tokens=300,   # concise — 300 tokens is plenty for a 3-bullet rationale
+            model=ch_model,        # Groq by default (SCHEDULED_PROVIDER), Haiku fallback
+            provider=ch_provider,
         )
         final_decision = chairman_out.get("decision", decision)
         # Hard-enforce risk manager rules

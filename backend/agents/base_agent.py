@@ -6,14 +6,50 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+# ── LLM clients ────────────────────────────────────────────────────────────────
+# Two providers are supported:
+#   • "anthropic" (Claude)  — used for on-demand Analyze search (quality prose).
+#   • "groq"      (Llama …) — used for the automatic/scheduled trader (free/cheap).
+# Pick the automatic trader's provider with SCHEDULED_PROVIDER ("groq" | "anthropic").
+client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))   # legacy alias
+anthropic_client = client
+
+try:
+    from groq import Groq
+    _groq_key = os.getenv("GROQ_API_KEY")
+    groq_client = Groq(api_key=_groq_key) if _groq_key else None
+except ImportError:
+    groq_client = None
 
 # Agents do simple JSON classification — Haiku is 12× cheaper and fast enough.
 # Chairman (on-demand): Sonnet for quality prose when user explicitly requests analysis.
 # Chairman (scheduled): Haiku — same JSON structure, 15× cheaper, fine for batch runs.
 AGENT_MODEL             = "claude-haiku-4-5-20251001"
 CHAIRMAN_MODEL          = "claude-sonnet-4-6"            # on-demand analysis (full quality)
-CHAIRMAN_SCHEDULE_MODEL = "claude-haiku-4-5-20251001"    # scheduled batch runs (cost-optimised)
+CHAIRMAN_SCHEDULE_MODEL = "claude-haiku-4-5-20251001"    # scheduled batch runs (Claude fallback)
+
+# ── Groq config (automatic trader) ─────────────────────────────────────────────
+# llama-3.3-70b-versatile is fast, supports JSON mode, and is on Groq's free tier.
+GROQ_AGENT_MODEL    = os.getenv("GROQ_AGENT_MODEL",    "llama-3.3-70b-versatile")
+GROQ_CHAIRMAN_MODEL = os.getenv("GROQ_CHAIRMAN_MODEL", "llama-3.3-70b-versatile")
+
+# Which provider the AUTOMATIC/scheduled trader uses. Default "groq" to save money.
+# The on-demand Analyze search always uses Claude regardless of this setting.
+SCHEDULED_PROVIDER  = os.getenv("SCHEDULED_PROVIDER", "groq").lower()
+
+
+def scheduled_agent_config() -> tuple[str, str]:
+    """(model, provider) the scheduled trader's data agents should use."""
+    if SCHEDULED_PROVIDER == "groq" and groq_client is not None:
+        return GROQ_AGENT_MODEL, "groq"
+    return AGENT_MODEL, "anthropic"
+
+
+def scheduled_chairman_config() -> tuple[str, str]:
+    """(model, provider) the scheduled trader's Chairman should use."""
+    if SCHEDULED_PROVIDER == "groq" and groq_client is not None:
+        return GROQ_CHAIRMAN_MODEL, "groq"
+    return CHAIRMAN_SCHEDULE_MODEL, "anthropic"
 
 # ── Daily budget guard ────────────────────────────────────────────────────────
 # Approximate cost per call (input ~1 500 tok + typical output).
@@ -29,7 +65,10 @@ DAILY_BUDGET_USD = float(os.getenv("DAILY_BUDGET_USD", "1.00"))
 _budget: dict = {"date": "", "spent": 0.0}
 
 
-def _track_cost(model: str) -> None:
+def _track_cost(model: str, provider: str = "anthropic") -> None:
+    # Groq usage is free / negligible — only Claude spend counts toward the cap.
+    if provider != "anthropic":
+        return
     today = str(_date.today())
     if _budget["date"] != today:
         _budget["date"]  = today
@@ -68,15 +107,25 @@ Return ONLY a valid JSON object with no markdown, no explanation — just the JS
 }"""
 
 
-def call_claude(
+def call_llm(
     system_prompt: str,
     user_prompt: str,
     agent_name: str,
     max_tokens: int = 150,
-    model: str = AGENT_MODEL,
+    model: str = None,
+    provider: str = "anthropic",
 ) -> dict:
-    # Hard daily budget cap — return HOLD fallback rather than overspend.
-    if is_over_daily_budget():
+    """
+    Provider-agnostic LLM call returning a parsed JSON vote dict.
+    provider: "anthropic" (Claude) or "groq" (Llama via Groq).
+    If model is None it defaults to the right model for the provider.
+    """
+    provider = (provider or "anthropic").lower()
+    if model is None:
+        model = GROQ_AGENT_MODEL if provider == "groq" else AGENT_MODEL
+
+    # Hard daily budget cap applies to PAID Claude calls only.
+    if provider == "anthropic" and is_over_daily_budget():
         vote = _HOLD_FALLBACK.copy()
         vote["agent"]    = agent_name
         vote["rationale"] = (
@@ -87,13 +136,29 @@ def call_claude(
         return vote
 
     try:
-        message = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        raw = message.content[0].text.strip()
+        if provider == "groq":
+            if groq_client is None:
+                raise RuntimeError("GROQ_API_KEY not set — cannot use the Groq provider")
+            resp = groq_client.chat.completions.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=0.3,
+                response_format={"type": "json_object"},   # force valid JSON
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_prompt},
+                ],
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+        else:
+            message = anthropic_client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            raw = message.content[0].text.strip()
+
         # Strip markdown code fences if present
         if raw.startswith("```"):
             raw = raw.split("```")[1]
@@ -102,13 +167,25 @@ def call_claude(
             raw = raw.strip()
         vote = json.loads(raw)
         vote["agent"] = agent_name
-        _track_cost(model)
+        _track_cost(model, provider)
         return vote
     except Exception as e:
         vote = _HOLD_FALLBACK.copy()
         vote["agent"] = agent_name
         vote["rationale"] = f"Agent error: {e}"
         return vote
+
+
+def call_claude(
+    system_prompt: str,
+    user_prompt: str,
+    agent_name: str,
+    max_tokens: int = 150,
+    model: str = None,
+    provider: str = "anthropic",
+) -> dict:
+    """Backwards-compatible wrapper. Delegates to call_llm."""
+    return call_llm(system_prompt, user_prompt, agent_name, max_tokens, model, provider)
 
 
 def get_stub_vote(ticker: str) -> dict:

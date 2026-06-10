@@ -70,9 +70,10 @@ Standard signals:
 Prefer SELL with low confidence over HOLD when bearish. Reserve HOLD for genuine neutrality."""
 
 
-def get_vote(ticker: str) -> dict:
+def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dict:
     # Return cached result if fresh enough
-    cached = _cache.get(ticker)
+    cache_key = f"{ticker}:{provider}"
+    cached = _cache.get(cache_key)
     if cached and time.time() - cached["ts"] < _CACHE_TTL:
         return cached["data"]
 
@@ -236,6 +237,8 @@ def get_vote(ticker: str) -> dict:
             SYSTEM_PROMPT,
             f"News/sentiment analysis for {ticker}: {json.dumps(market_data)}",
             "newshound",
+            model=model,
+            provider=provider,
         )
         # Append raw sentiment fields so the frontend can render the
         # "Noteworthy Considerations" section without a second API call.
@@ -254,7 +257,7 @@ def get_vote(ticker: str) -> dict:
             "analyst_downgrades_30d": market_data.get("analyst_downgrades_30d"),
             "recent_headlines":       market_data.get("recent_headlines", [])[:5],
         })
-        _cache[ticker] = {"ts": time.time(), "data": result}
+        _cache[cache_key] = {"ts": time.time(), "data": result}
         return result
     except Exception as e:
         return {

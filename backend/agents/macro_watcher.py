@@ -279,7 +279,7 @@ def _get_macro_snapshot() -> dict:
     return data
 
 
-def get_vote(ticker: str) -> dict:
+def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dict:
     try:
         macro = _get_macro_snapshot()
 
@@ -316,6 +316,8 @@ def get_vote(ticker: str) -> dict:
             SYSTEM_PROMPT,
             f"Macro analysis for {ticker}: {json.dumps(market_data)}",
             "macro_watcher",
+            model=model,
+            provider=provider,
         )
         # Inject raw fields the orchestrator needs for dynamic weight selection
         result["spy_above_200d"] = macro["spy_above_200d"]

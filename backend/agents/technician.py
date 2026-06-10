@@ -465,8 +465,9 @@ Synthesis rule: Score higher when multiple timeframes agree (monthly uptrend + w
 #  Main agent function
 # ══════════════════════════════════════════════════════════════════════════════
 
-def get_vote(ticker: str) -> dict:
-    cached = _cache.get(ticker)
+def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dict:
+    cache_key = f"{ticker}:{provider}"
+    cached = _cache.get(cache_key)
     if cached and time.time() - cached["ts"] < _CACHE_TTL:
         return cached["data"]
 
@@ -715,10 +716,12 @@ def get_vote(ticker: str) -> dict:
             SYSTEM_PROMPT,
             f"Technical analysis for {ticker}: {json.dumps(_clean_nans(market_data))}",
             "technician",
+            model=model,
+            provider=provider,
         )
         vote["current_price"] = current_price
         vote["atr_pct"]       = atr_pct
-        _cache[ticker] = {"ts": time.time(), "data": vote}
+        _cache[cache_key] = {"ts": time.time(), "data": vote}
         return vote
 
     except Exception as e:
