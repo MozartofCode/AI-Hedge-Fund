@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import Analyze        from './pages/Analyze'
 import Portfolio      from './pages/Portfolio'
-import ForexPortfolio from './pages/ForexPortfolio'
 
 const TABS = [
   { id: 'analyze',   label: 'Analyze',         icon: '🔬' },
   { id: 'portfolio', label: 'Stock Portfolio',  icon: '💼' },
-  { id: 'forex',     label: 'Forex Trading',    icon: '💱' },
 ]
 
 export default function App() {
@@ -47,7 +45,6 @@ export default function App() {
       <div className="pt-16">
         {tab === 'analyze'   && <Analyze />}
         {tab === 'portfolio' && <Portfolio />}
-        {tab === 'forex'     && <ForexPortfolio />}
       </div>
     </div>
   )

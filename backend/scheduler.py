@@ -97,36 +97,9 @@ def start_scheduler():
             replace_existing=True,
         )
 
-    # ── Forex committee — 2 sessions/day at London-NY overlap & NY afternoon ──
-    # 13:00 UTC = 9am ET (London-NY overlap, highest forex volume)
-    # 18:00 UTC = 2pm ET (NY afternoon session)
-    _FOREX_SESSIONS_UTC = [(13, 0), (18, 0)]
-
-    async def _forex_job():
-        from backend.forex_orchestrator import run_full_forex_committee
-        from backend.broker.forex_broker import is_forex_market_open
-        if not is_forex_market_open():
-            print("[FOREX] Market closed — skipping")
-            return
-        results = await run_full_forex_committee()
-        print(f"[FOREX] Committee complete — {len(results)} pairs processed")
-
-    for idx, (hour, minute) in enumerate(_FOREX_SESSIONS_UTC):
-        scheduler.add_job(
-            _forex_job,
-            trigger=CronTrigger(
-                day_of_week="mon-fri",
-                hour=hour,
-                minute=minute,
-                timezone=pytz.UTC,
-            ),
-            id=f"forex_committee_{idx}",
-            replace_existing=True,
-        )
-
     scheduler.start()
     markets_str = ", ".join(
         f"{c}({', '.join(f'{h:02d}:{m:02d}' for h, m in s)})"
         for c, s in _MARKET_SESSIONS.items()
     )
-    print(f"Scheduler started — sessions: {markets_str}, FOREX(13:00,18:00 UTC)")
+    print(f"Scheduler started — sessions: {markets_str}")

@@ -88,28 +88,3 @@ class PaperPosition(Base):
     avg_cost = Column(Float, nullable=False)   # average purchase price per share
     opened_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-
-
-# ── Forex Paper Trading Tables ────────────────────────────────────────────────
-
-class ForexPortfolio(Base):
-    """Single-row forex paper account — $1M USD starting balance."""
-    __tablename__ = "forex_portfolio"
-
-    id         = Column(Integer, primary_key=True)   # always 1
-    cash       = Column(Float, nullable=False, default=1_000_000.0)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-
-
-class ForexPosition(Base):
-    """One row per open currency pair — long OR short."""
-    __tablename__ = "forex_positions"
-
-    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    pair           = Column(String(10), nullable=False, unique=True)  # e.g. "EURUSD"
-    direction      = Column(String(5), nullable=False)                # "long" | "short"
-    notional_usd   = Column(Float, nullable=False)                    # USD amount invested
-    entry_rate     = Column(Float, nullable=False)                    # exchange rate at entry
-    stop_loss_rate = Column(Float, nullable=True)                     # rate to auto-close
-    opened_at      = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at     = Column(DateTime(timezone=True), default=datetime.utcnow)

@@ -22,10 +22,4 @@ export const api = {
   latestSession: (ticker, market = 'US')         => get(`/api/latest-session/${encodeURIComponent(ticker)}?market=${market}`),
   analyze:       (ticker, market = 'US')         => post(`/api/analyze?ticker=${encodeURIComponent(ticker)}&market=${market}`),
   search:        (q, market = 'US')              => get(`/api/search?q=${encodeURIComponent(q)}&market=${market}`),
-  // Forex endpoints
-  forexPortfolio: ()                             => get('/api/forex/portfolio'),
-  forexStats:     ()                             => get('/api/forex/stats'),
-  forexTrades:    (page = 1, limit = 20)         => get(`/api/forex/trades?page=${page}&limit=${limit}`),
-  forexRates:     ()                             => get('/api/forex/rates'),
-  forexCommittee: (pair = null)                  => post(`/api/forex/run-committee${pair ? `?pair=${encodeURIComponent(pair)}` : ''}`),
 }
