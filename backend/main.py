@@ -1,6 +1,6 @@
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, Query
+from fastapi import FastAPI, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -30,7 +30,14 @@ async def lifespan(app: FastAPI):
                 market=mkt_code,
                 starting_cash=cfg["starting_cash"],
             )
-    start_scheduler()
+    # In-process scheduler only works on an always-on host. On free/sleeping
+    # hosts set ENABLE_SCHEDULER=false and drive trades via the GitHub Actions
+    # cron that POSTs to /api/run-committee instead.
+    if os.getenv("ENABLE_SCHEDULER", "true").lower() == "true":
+        start_scheduler()
+    else:
+        print("[startup] ENABLE_SCHEDULER=false — in-process scheduler disabled "
+              "(expecting external cron to call /api/run-committee)")
     yield
     await engine.dispose()
 
@@ -68,8 +75,17 @@ async def health():
 
 
 @app.post("/api/run-committee")
-async def run_committee(ticker: str = None, market: str = Query('US')):
-    """Manually trigger a full committee session or a single-ticker run."""
+async def run_committee(ticker: str = None, market: str = Query('US'), request: Request = None):
+    """Manually/externally trigger a full committee session or a single-ticker run.
+
+    If CRON_SECRET is set, callers must send a matching X-Cron-Secret header.
+    Used by the free GitHub Actions cron to drive trading without an always-on host.
+    """
+    cron_secret = os.getenv("CRON_SECRET")
+    if cron_secret:
+        provided = request.headers.get("X-Cron-Secret") if request else None
+        if provided != cron_secret:
+            return JSONResponse(status_code=401, content={"error": "unauthorized"})
     try:
         from backend.orchestrator import run_full_committee, run_committee_for_ticker
         from backend.broker.paper_broker import get_portfolio

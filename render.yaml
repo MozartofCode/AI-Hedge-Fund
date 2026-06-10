@@ -1,0 +1,34 @@
+# Render.com free-tier blueprint.
+# Deploy: Render dashboard → New → Blueprint → pick this repo.
+# Free web services sleep after ~15 min idle, so the in-process scheduler is
+# disabled (ENABLE_SCHEDULER=false) and trades are driven by the GitHub Actions
+# cron (.github/workflows/committee.yml), which wakes the service on each run.
+services:
+  - type: web
+    name: ai-hedge-fund-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENABLE_SCHEDULER
+        value: "false"
+      - key: SCHEDULED_PROVIDER
+        value: groq
+      # Secrets — set the values in the Render dashboard (sync:false = not in git)
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: FMP_API_KEY
+        sync: false
+      - key: ALPHAVANTAGE_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false

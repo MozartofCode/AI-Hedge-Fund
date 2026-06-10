@@ -1,0 +1,39 @@
+name: Trading Committee (free cron)
+
+# Drives the automatic trader without an always-on host.
+# It POSTs to /api/run-committee for each market; the backend skips any market
+# that is currently closed, so over-triggering is harmless.
+#
+# Setup (one-time): in the GitHub repo → Settings → Secrets and variables →
+# Actions, add:
+#   BACKEND_URL  = https://your-backend-host   (no trailing slash)
+#   CRON_SECRET  = same value as the backend's CRON_SECRET env var (optional)
+
+on:
+  schedule:
+    - cron: '0 11 * * 1-5'   # 11:00 UTC — inside TR / NG sessions
+    - cron: '0 16 * * 1-5'   # 16:00 UTC — inside US / BR / AR sessions
+  workflow_dispatch: {}        # manual "Run workflow" button in the Actions tab
+
+jobs:
+  committee:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger committee for all markets
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BACKEND_URL" ]; then
+            echo "::error::BACKEND_URL secret is not set"; exit 1
+          fi
+          # Wake a sleeping free host first (ignore result)
+          curl -sS --max-time 90 "$BACKEND_URL/api/health" > /dev/null || true
+          for MARKET in US BR AR TR NG; do
+            echo "=== Triggering committee: $MARKET ==="
+            curl -sS -X POST "$BACKEND_URL/api/run-committee?market=$MARKET" \
+              -H "X-Cron-Secret: $CRON_SECRET" \
+              --max-time 600 \
+              -w "\nHTTP %{http_code}\n" \
+              || echo "request failed for $MARKET (server may still finish processing)"
+          done
