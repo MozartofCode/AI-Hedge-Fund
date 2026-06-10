@@ -44,15 +44,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AlphaCommittee API", version="0.3.0", lifespan=lifespan)
 
-# Build allowed-origins list: always include the env var (or localhost fallback)
-# plus the known Vercel deployment so CORS never breaks if the env var is missing.
-_KNOWN_ORIGINS = {
-    "https://ai-hedge-fund-liart.vercel.app",
-    os.getenv("FRONTEND_URL", "http://localhost:5173"),
-}
+# CORS: allow the configured frontend URL, local dev, and ANY *.vercel.app
+# deployment (so production + preview/branch deploys all work without redeploying
+# the backend). allow_origin_regex matches the full origin string.
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+_ALLOWED_ORIGIN_REGEX = r"https://([a-z0-9-]+\.)*vercel\.app|http://localhost(:\d+)?"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(_KNOWN_ORIGINS),
+    allow_origins=[_FRONTEND_URL],
+    allow_origin_regex=_ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
