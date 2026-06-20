@@ -8,7 +8,7 @@ load_dotenv()
 
 # ── LLM clients ────────────────────────────────────────────────────────────────
 # Two providers are supported:
-#   • "anthropic" (Claude)  — used for on-demand Analyze search (quality prose).
+#   • "anthropic" (Claude)  — Haiku fallback for the committee when Groq is off.
 #   • "groq"      (Llama …) — used for the automatic/scheduled trader (free/cheap).
 # Pick the automatic trader's provider with SCHEDULED_PROVIDER ("groq" | "anthropic").
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))   # legacy alias
@@ -22,10 +22,8 @@ except ImportError:
     groq_client = None
 
 # Agents do simple JSON classification — Haiku is 12× cheaper and fast enough.
-# Chairman (on-demand): Sonnet for quality prose when user explicitly requests analysis.
 # Chairman (scheduled): Haiku — same JSON structure, 15× cheaper, fine for batch runs.
 AGENT_MODEL             = "claude-haiku-4-5-20251001"
-CHAIRMAN_MODEL          = "claude-sonnet-4-6"            # on-demand analysis (full quality)
 CHAIRMAN_SCHEDULE_MODEL = "claude-haiku-4-5-20251001"    # scheduled batch runs (Claude fallback)
 
 # ── Groq config (automatic trader) ─────────────────────────────────────────────
@@ -34,7 +32,6 @@ GROQ_AGENT_MODEL    = os.getenv("GROQ_AGENT_MODEL",    "llama-3.3-70b-versatile"
 GROQ_CHAIRMAN_MODEL = os.getenv("GROQ_CHAIRMAN_MODEL", "llama-3.3-70b-versatile")
 
 # Which provider the AUTOMATIC/scheduled trader uses. Default "groq" to save money.
-# The on-demand Analyze search always uses Claude regardless of this setting.
 SCHEDULED_PROVIDER  = os.getenv("SCHEDULED_PROVIDER", "groq").lower()
 
 
@@ -96,15 +93,6 @@ _HOLD_FALLBACK = {
     "rationale": "Agent failed to produce a vote — defaulting to HOLD.",
     "suggested_position_size_pct": 0,
 }
-
-STUB_SYSTEM_PROMPT = """You are a stub AI trading agent used for Phase 1 end-to-end testing.
-Return ONLY a valid JSON object with no markdown, no explanation — just the JSON:
-{
-  "action": "BUY",
-  "confidence": 0.75,
-  "rationale": "Test vote from base agent stub.",
-  "suggested_position_size_pct": 3
-}"""
 
 
 def call_llm(
@@ -186,11 +174,3 @@ def call_claude(
 ) -> dict:
     """Backwards-compatible wrapper. Delegates to call_llm."""
     return call_llm(system_prompt, user_prompt, agent_name, max_tokens, model, provider)
-
-
-def get_stub_vote(ticker: str) -> dict:
-    return call_claude(
-        system_prompt=STUB_SYSTEM_PROMPT,
-        user_prompt=f"Provide a test vote for ticker: {ticker}",
-        agent_name="base_agent_stub",
-    )

@@ -1,23 +1,19 @@
 # AI Hedge Fund
 
-An autonomous paper trading system powered by Claude AI. AI agents independently analyze
-stocks and currency pairs, debate the evidence, and execute paper trades — starting with
-$1,000,000 and no brokerage account needed.
+An autonomous paper trading system powered by AI. This is a **US-only stock hedge fund**:
+a committee of AI agents independently analyzes US-listed stocks (NYSE / NASDAQ), debates
+the evidence, and executes paper trades — starting with $1,000,000 and no brokerage account
+needed.
 
 ---
 
 ## What It Does
 
-**Stock Portfolio** — Five AI analysts each study a different angle of a stock (its price
-chart, financial health, recent news, the overall economy, and risk) then each votes to
-buy, sell, or hold. A Chairman AI reads all five opinions and makes the final call, like a
-group of advisors debating before a boss decides.
-
-**Forex Trading** — The system trades 10 currency pairs by finding currencies where one
-country pays a much higher interest rate than the other — simply holding the higher-rate
-currency earns money over time, the way a savings account earns interest. It also checks
-price momentum and global economic signals, with automatic stop-losses so no single bad
-trade can blow up the account.
+Five AI analysts each study a different angle of a stock — its price chart, financial health,
+recent news, the overall economy, and risk — then each votes to buy, sell, or hold. A Chairman
+AI reads all five opinions and makes the final call, like a group of advisors debating before
+a boss decides. Trades execute automatically during US market hours and every position is
+tracked live.
 
 ---
 
@@ -26,43 +22,42 @@ trade can blow up the account.
 ```
                     ┌─────────────────────────────┐
                     │   React 18 + Tailwind CSS    │
-                    │   Vercel (frontend)           │
+                    │   Vercel (frontend)          │
                     └─────────────┬───────────────┘
                                   │ REST
                     ┌─────────────▼───────────────┐
                     │   FastAPI + APScheduler      │
-                    │   Railway (backend)           │
-                    └──────┬──────────────┬────────┘
-                           │              │
-            ┌──────────────▼──┐    ┌──────▼──────────────┐
-            │  Stock Committee │    │  Forex Committee     │
-            │                  │    │                      │
-            │  Technician      │    │  FX Technician       │
-            │  Fundamentalist  │    │  FX Carry            │
-            │  Newshound       │    │  FX Macro            │
-            │  Macro Watcher   │    │  FX Risk Manager     │
-            │  Risk Manager    │    │  (pure logic)        │
-            │  Chairman (AI)   │    │  Chairman (AI)       │
-            └──────────────────┘    └──────────────────────┘
-                           │              │
-                    ┌──────▼──────────────▼────────┐
-                    │   PostgreSQL — Supabase       │
+                    │   backend                    │
+                    └─────────────┬───────────────┘
+                                  │
+                    ┌─────────────▼───────────────┐
+                    │      US Stock Committee      │
+                    │                              │
+                    │  Technician                  │
+                    │  Fundamentalist              │
+                    │  Newshound                   │
+                    │  Macro Watcher               │
+                    │  Risk Manager (pure logic)   │
+                    │  Chairman (AI)               │
+                    └─────────────┬───────────────┘
+                                  │
+                    ┌─────────────▼───────────────┐
+                    │   PostgreSQL — Supabase      │
                     └──────────────────────────────┘
 ```
 
-**AI Models:** Claude Haiku for all agents · Claude Sonnet for on-demand Chairman synthesis
-**Data:** yfinance (free) · Finnhub (news) · FMP (fundamentals)
+**AI Models:** Claude Haiku for the agents · Groq Llama (default) or Claude for the Chairman,
+selectable with `SCHEDULED_PROVIDER`
+**Data:** yfinance (prices, free) · Finnhub (news) · FMP (fundamentals & screener)
 
 ---
 
 ## Features
 
-- **Analyze any stock** — type a ticker or company name and get a full AI committee report
-  in ~30 seconds, with plain-English explanations of every metric
-- **Stock Portfolio** — autonomous paper trading across US, Brazil, Argentina, Turkey, and
-  Nigeria markets; $1M starting balance; positions tracked live
-- **Forex Trading** — 10 major currency pairs traded with carry, momentum, and macro signals;
-  $1M starting balance; live rates strip with P&L
+- **US Stock Portfolio** — autonomous paper trading on NYSE / NASDAQ; $1M starting balance;
+  positions tracked live with a P&L heatmap and trade history
+- **Committee transparency** — click any position or trade to see every agent's vote and the
+  Chairman's rationale
 - **Daily budget guard** — Claude spend is capped (default $1.25/day) so there are no
   surprise bills
 - **Plain-English results** — all agent rationales and metric labels are written for everyday
@@ -72,14 +67,14 @@ trade can blow up the account.
 
 ## Cost Profile
 
-| Component | Model | Cost/analysis |
+| Component | Model | Cost |
 |---|---|---|
-| 4 stock agents | Claude Haiku | ~$0.002 |
-| Chairman (on-demand) | Claude Sonnet | ~$0.006 |
-| **Per stock analysis** | | **~$0.008** |
-| Scheduled committee (daily) | All Haiku | ~$0.91/day |
-| Forex committee (2x/day) | All Haiku | ~$0.09/day |
-| **Daily total** | | **~$1.00/day** |
+| 4 stock agents (per ticker) | Claude Haiku | ~$0.002 |
+| Chairman (per BUY/SELL) | Claude Haiku / Groq | ~$0.001 |
+| Scheduled committee (daily, ~30 tickers) | Haiku | ~$0.91/day |
+
+Using Groq's free Llama tier for the scheduled trader (`SCHEDULED_PROVIDER=groq`, the default)
+drops the daily Claude spend close to zero.
 
 ---
 
@@ -87,19 +82,22 @@ trade can blow up the account.
 
 ### Environment Variables
 
-**Backend (Railway):**
+**Backend:**
 ```
 ANTHROPIC_API_KEY=sk-ant-...
+GROQ_API_KEY=...
+SCHEDULED_PROVIDER=groq
 DATABASE_URL=postgresql+asyncpg://postgres:PASSWORD@db.<project>.supabase.co:5432/postgres
 FINNHUB_API_KEY=...
 FMP_API_KEY=...
 DAILY_BUDGET_USD=1.25
+COMMITTEE_MAX_TICKERS=30
 FRONTEND_URL=https://your-app.vercel.app
 ```
 
 **Frontend (Vercel):**
 ```
-VITE_API_URL=https://your-railway-backend.up.railway.app
+VITE_API_URL=https://your-backend-host
 ```
 
 > FMP free tier (250 calls/day) works for most metrics. If unavailable, the system
@@ -121,15 +119,8 @@ Frontend: http://localhost:5173
 
 ### Deployment
 
-**Railway (backend):**
-1. Connect GitHub repo
-2. Set env vars in Railway dashboard
-3. Start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-
-**Vercel (frontend):**
-1. Import repo, set root to `frontend/`
-2. Set `VITE_API_URL` env var
-3. Auto-deploys on push to main
+See [DEPLOY_FREE.md](DEPLOY_FREE.md) for free hosting options (Render + GitHub Actions cron,
+or an Oracle Cloud always-free VM). The frontend deploys to Vercel with root set to `frontend/`.
 
 ---
 
@@ -139,20 +130,20 @@ Frontend: http://localhost:5173
 AI-Hedge-Fund/
 ├── backend/
 │   ├── main.py                  # FastAPI app entry point
-│   ├── orchestrator.py          # Stock committee logic
-│   ├── forex_orchestrator.py    # Forex committee logic
-│   ├── scheduler.py             # Auto-trading schedule
-│   ├── agents/                  # All AI agents
-│   ├── broker/                  # Paper trading execution
-│   ├── data/                    # Market data clients
+│   ├── orchestrator.py          # US stock committee logic + autonomous trading
+│   ├── scheduler.py             # Daily auto-trading schedule (US session)
+│   ├── markets.py               # US market hours + open/close check
+│   ├── screener.py              # Dynamic US watchlist (FMP + seed list)
+│   ├── agents/                  # The 5 AI agents
+│   ├── broker/                  # Paper trading execution (yfinance prices)
+│   ├── data/                    # Market data clients (yfinance, Finnhub, FMP)
 │   ├── db/                      # Database models + CRUD
 │   └── api/                     # FastAPI route handlers
 ├── frontend/
 │   └── src/
 │       ├── pages/
-│       │   ├── Analyze.jsx      # Stock analysis page
-│       │   ├── Portfolio.jsx    # Stock portfolio page
-│       │   └── ForexPortfolio.jsx  # Forex trading page
+│       │   ├── Portfolio.jsx    # US portfolio: heatmap + trades + committee view
+│       │   └── Trades.jsx       # Trade history + committee session detail
 │       └── App.jsx
 └── requirements.txt
 ```

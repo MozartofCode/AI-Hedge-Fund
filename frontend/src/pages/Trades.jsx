@@ -288,7 +288,7 @@ function Pagination({ page, pages, total, limit, onPage }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function Trades({ market = 'US' }) {
+export default function Trades() {
   const [rows, setRows]               = useState(null)
   const [total, setTotal]             = useState(0)
   const [page, setPage]               = useState(1)
@@ -302,7 +302,7 @@ export default function Trades({ market = 'US' }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.trades(page, LIMIT, market)
+      const data = await api.trades(page, LIMIT)
       setRows(data.items ?? [])
       setTotal(data.total ?? 0)
       setPages(data.pages ?? 1)
@@ -312,7 +312,7 @@ export default function Trades({ market = 'US' }) {
     } finally {
       setLoading(false)
     }
-  }, [page, market])
+  }, [page])
 
   useEffect(() => { load() }, [load])
 

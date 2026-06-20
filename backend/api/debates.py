@@ -1,10 +1,8 @@
-import math
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import get_db
 from backend.db.crud import (
-    get_recent_sessions, get_session_count,
     get_session_by_id, get_latest_session_for_ticker,
 )
 
@@ -138,30 +136,3 @@ async def get_latest_session(
     if s is None:
         raise HTTPException(status_code=404, detail=f"No session found for {ticker.upper()} in {market.upper()}")
     return _serialize_session(s)
-
-
-@router.get("/debates")
-async def debates(
-    page: int = 1,
-    limit: int = 20,
-    market: str = Query('US'),
-    db: AsyncSession = Depends(get_db),
-):
-    mkt      = market.upper()
-    offset   = (page - 1) * limit
-    sessions = await get_recent_sessions(db, limit=limit, offset=offset, market=mkt)
-    total    = await get_session_count(db, mkt)
-    return {
-        "market": mkt,
-        "items": [
-            {
-                **_serialize_session(s),
-                "order_id": s.order_id,
-            }
-            for s in sessions
-        ],
-        "total": total,
-        "page":  page,
-        "pages": math.ceil(total / limit) if total else 1,
-        "limit": limit,
-    }

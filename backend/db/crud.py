@@ -107,20 +107,6 @@ async def get_latest_session_for_ticker(
     return result.scalar_one_or_none()
 
 
-async def get_recent_sessions(
-    db: AsyncSession, limit: int = 20, offset: int = 0, market: str = 'US'
-):
-    result = await db.execute(
-        select(CommitteeSession)
-        .options(selectinload(CommitteeSession.agent_votes))
-        .where(CommitteeSession.market == market.upper())
-        .order_by(desc(CommitteeSession.session_timestamp))
-        .offset(offset)
-        .limit(limit)
-    )
-    return result.scalars().all()
-
-
 async def get_recent_trades(
     db: AsyncSession, limit: int = 20, offset: int = 0, market: str = 'US'
 ):

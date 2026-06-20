@@ -23,7 +23,7 @@ _BASE    = "https://financialmodelingprep.com/api/v3"
 _cache: dict = {}
 _CACHE_TTL   = 7200
 
-# ── Hard-coded seed lists per market ─────────────────────────────────────────
+# ── Hard-coded US seed list ──────────────────────────────────────────────────
 # These always make the cut regardless of screener results.
 # Kept intentionally broad so no obvious candidate is ever dropped.
 
@@ -51,39 +51,8 @@ _US_SEEDS = [
     "SPY","QQQ","IWM","ARKK",
 ]
 
-_BR_SEEDS = [
-    "PETR4.SA","VALE3.SA","ITUB4.SA","BBDC4.SA","ABEV3.SA",
-    "WEGE3.SA","RENT3.SA","B3SA3.SA","SUZB3.SA","MGLU3.SA",
-    "RADL3.SA","CASH3.SA","IFCM3.SA","INTB3.SA","MXRF11.SA",
-    "PRIO3.SA","CSAN3.SA","EMBR3.SA","BEEF3.SA","CPLE6.SA",
-    "VIVT3.SA","NTCO3.SA","SOMA3.SA","ARZZ3.SA","SRNA3.SA",
-]
-
-_AR_SEEDS = [
-    "YPF","GGAL","BMA","PAM","LOMA","TGS","CEPU","SUPV","DESP","BIOX",
-    "GLOB","MELI","ARCO","IRS","CAAP","IRCP","BHIP","EDN","COME","AGRO",
-]
-
-_TR_SEEDS = [
-    "THYAO.IS","ASELS.IS","SISE.IS","KCHOL.IS","GARAN.IS",
-    "AKBNK.IS","BIMAS.IS","EREGL.IS","FROTO.IS","TCELL.IS",
-    "TOASO.IS","PGSUS.IS","EKGYO.IS","KOZAL.IS","SAHOL.IS",
-    "TUPRS.IS","ARCLK.IS","SODA.IS","TAVHL.IS","ULKER.IS",
-]
-
-_NG_SEEDS = [
-    "MTNN.LG","DANGCEM.LG","GTCO.LG","ZENITHBANK.LG","AIRTELAFRI.LG",
-    "ACCESSCORP.LG","BUACEMENT.LG","NB.LG","UBA.LG","SEPLAT.LG",
-    "FBNH.LG","STANBIC.LG","WAPCO.LG","DANGSUGAR.LG","FIDSON.LG",
-    "OANDO.LG","NESTLE.LG","PRESCO.LG","TOTAL.LG","CONOIL.LG",
-]
-
 SEEDS = {
     "US": _US_SEEDS,
-    "BR": _BR_SEEDS,
-    "AR": _AR_SEEDS,
-    "TR": _TR_SEEDS,
-    "NG": _NG_SEEDS,
 }
 
 
@@ -159,13 +128,12 @@ def _fmp_sector_winners() -> list:
     return tickers
 
 
-def get_watchlist(market: str, max_tickers: int = 250) -> list:
+def get_watchlist(market: str = "US", max_tickers: int = 250) -> list:
     """
-    Return the full watchlist for a market.
+    Return the full US watchlist.
 
-    For US: merges seed list + FMP screener + today's movers, deduplicates,
-            and caps at max_tickers.
-    For non-US: returns seed list (limited API coverage for foreign exchanges).
+    Merges the seed list + FMP screener + today's movers, deduplicates, and
+    caps at max_tickers. Falls back to the seed list alone if no FMP key is set.
 
     Results are cached for 2 hours so the screener only runs once per session.
     """
@@ -176,9 +144,9 @@ def get_watchlist(market: str, max_tickers: int = 250) -> list:
     if cached and time.time() - cached["ts"] < _CACHE_TTL:
         return cached["data"]
 
-    seeds = SEEDS.get(market, [])
+    seeds = SEEDS.get(market, _US_SEEDS)
 
-    if market == "US" and _FMP_KEY:
+    if _FMP_KEY:
         # Dynamic screen — narrows full market to top opportunities
         dynamic = _fmp_movers() + _fmp_screener(limit=500) + _fmp_sector_winners()
         # Seeds always go first so they're never dropped by the cap
@@ -188,7 +156,7 @@ def get_watchlist(market: str, max_tickers: int = 250) -> list:
                     if t and 1 <= len(t) <= 5 and t.isalpha()]
         result = filtered[:max_tickers]
     else:
-        # Non-US or no FMP key — just use the seed list
+        # No FMP key — just use the seed list
         result = seeds
 
     _cache[cache_key] = {"ts": time.time(), "data": result}
