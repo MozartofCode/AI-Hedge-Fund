@@ -11,6 +11,7 @@ const SYMBOL = MARKET.currency
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Compact form (e.g. $1.23M) — used in tight spaces like heatmap tooltips.
 function fmtCurrency(v, symbol = '$') {
   if (v == null) return '—'
   const abs = Math.abs(v)
@@ -19,6 +20,14 @@ function fmtCurrency(v, symbol = '$') {
   else if (abs >= 1_000_000) str = `${(v / 1_000_000).toFixed(2)}M`
   else str = Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return `${symbol}${str}`
+}
+
+// Full form (e.g. $1,004,000.00) — used for headline stats so small gains/losses
+// like a few thousand dollars on a $1M balance are never rounded away.
+function fmtMoney(v, symbol = '$') {
+  if (v == null) return '—'
+  const sign = v < 0 ? '-' : ''
+  return `${sign}${symbol}${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function fmtPct(v) {
@@ -198,19 +207,13 @@ export default function Portfolio() {
 
   const refresh = useCallback(async (showSpinner = false) => {
     if (showSpinner) setRefreshing(true)
-    try {
-      const [portData, statsData] = await Promise.all([
-        api.portfolio(),
-        api.stats(),
-      ])
-      setPortfolio(portData)
-      setStats(statsData)
-      setLastUpdated(new Date())
-    } catch (e) {
-      console.error('Portfolio refresh failed:', e)
-    } finally {
-      setRefreshing(false)
-    }
+    // Fetch independently so holdings + portfolio value render the moment the
+    // portfolio responds, without waiting on the slower stats call.
+    const pPort  = api.portfolio().then(setPortfolio).catch(e => console.error('Portfolio fetch failed:', e))
+    const pStats = api.stats().then(setStats).catch(e => console.error('Stats fetch failed:', e))
+    await Promise.allSettled([pPort, pStats])
+    setLastUpdated(new Date())
+    setRefreshing(false)
   }, [])
 
   // Initial fetch + 60s auto-refresh
@@ -316,11 +319,11 @@ export default function Portfolio() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Portfolio Value" value={fmtCurrency(totalValue, sym)} />
-            <StatCard label="Cash" value={fmtCurrency(cash, sym)} />
+            <StatCard label="Portfolio Value" value={fmtMoney(totalValue, sym)} />
+            <StatCard label="Cash" value={fmtMoney(cash, sym)} />
             <StatCard
               label="Total P&L"
-              value={fmtCurrency(pl, sym)}
+              value={fmtMoney(pl, sym)}
               sub={fmtPct(plPct)}
               color={pl > 0 ? 'green' : pl < 0 ? 'red' : null}
             />

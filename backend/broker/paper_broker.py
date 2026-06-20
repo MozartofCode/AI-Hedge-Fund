@@ -3,6 +3,7 @@ Paper trading broker — replaces Alpaca entirely.
 Prices come from yfinance (free, no API key).
 Positions and cash are stored in PostgreSQL, keyed by market.
 """
+import asyncio
 import time
 import uuid
 from datetime import datetime
@@ -86,16 +87,29 @@ async def get_portfolio(market: str = 'US') -> dict:
     default_cash = MARKETS.get(market.upper(), MARKETS["US"])["starting_cash"]
     cash = portfolio.cash if portfolio else default_cash
 
+    # Fetch every position's live price concurrently — yfinance is the slow part,
+    # so running the calls in parallel turns an N-second load into ~1 call's worth.
+    tickers = [pos.ticker for pos in positions_rows]
+    fetched = await asyncio.gather(
+        *(asyncio.to_thread(get_current_price, t) for t in tickers),
+        return_exceptions=True,
+    )
+    price_map = {
+        t: p for t, p in zip(tickers, fetched)
+        if not isinstance(p, Exception)
+    }
+
     enriched = []
     total_market_value = 0.0
     for pos in positions_rows:
-        try:
-            price = get_current_price(pos.ticker)
+        price = price_map.get(pos.ticker)
+        if price:
             mkt_val = pos.qty * price
             cost_basis = pos.qty * pos.avg_cost
             unr_pl = mkt_val - cost_basis
             unr_plpc = unr_pl / cost_basis if cost_basis > 0 else 0.0
-        except Exception:
+        else:
+            # Price fetch failed — fall back to cost basis (no unrealized P&L)
             price = pos.avg_cost
             mkt_val = pos.qty * pos.avg_cost
             unr_pl = 0.0
