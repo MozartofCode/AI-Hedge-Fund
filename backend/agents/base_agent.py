@@ -34,17 +34,21 @@ GROQ_CHAIRMAN_MODEL = os.getenv("GROQ_CHAIRMAN_MODEL", "llama-3.3-70b-versatile"
 # Which provider the AUTOMATIC/scheduled trader uses. Default "groq" to save money.
 SCHEDULED_PROVIDER  = os.getenv("SCHEDULED_PROVIDER", "groq").lower()
 
+# Kill switch: Claude API calls are fully disabled for now. Set DISABLE_CLAUDE=false
+# to re-enable the Anthropic fallback path once ready.
+CLAUDE_DISABLED = os.getenv("DISABLE_CLAUDE", "true").lower() in ("1", "true", "yes")
+
 
 def scheduled_agent_config() -> tuple[str, str]:
     """(model, provider) the scheduled trader's data agents should use."""
-    if SCHEDULED_PROVIDER == "groq" and groq_client is not None:
+    if CLAUDE_DISABLED or (SCHEDULED_PROVIDER == "groq" and groq_client is not None):
         return GROQ_AGENT_MODEL, "groq"
     return AGENT_MODEL, "anthropic"
 
 
 def scheduled_chairman_config() -> tuple[str, str]:
     """(model, provider) the scheduled trader's Chairman should use."""
-    if SCHEDULED_PROVIDER == "groq" and groq_client is not None:
+    if CLAUDE_DISABLED or (SCHEDULED_PROVIDER == "groq" and groq_client is not None):
         return GROQ_CHAIRMAN_MODEL, "groq"
     return CHAIRMAN_SCHEDULE_MODEL, "anthropic"
 
@@ -111,6 +115,13 @@ def call_llm(
     provider = (provider or "anthropic").lower()
     if model is None:
         model = GROQ_AGENT_MODEL if provider == "groq" else AGENT_MODEL
+
+    if provider == "anthropic" and CLAUDE_DISABLED:
+        vote = _HOLD_FALLBACK.copy()
+        vote["agent"] = agent_name
+        vote["rationale"] = "Claude API disabled (DISABLE_CLAUDE=true) — defaulting to HOLD."
+        print(f"[claude-disabled] skipping {agent_name} call")
+        return vote
 
     # Hard daily budget cap applies to PAID Claude calls only.
     if provider == "anthropic" and is_over_daily_budget():
