@@ -72,8 +72,10 @@ async def health():
 
 
 @app.post("/api/run-committee")
-async def run_committee(ticker: str = None, market: str = Query('US'), request: Request = None):
-    """Manually/externally trigger a full committee session or a single-ticker run.
+async def run_committee(market: str = Query('US'), request: Request = None):
+    """Manually/externally trigger a full, automated committee session across the
+    scheduled watchlist. There is no single-ticker/on-demand path — the committee
+    only ever runs its scheduled buy/sell sweep.
 
     If CRON_SECRET is set, callers must send a matching X-Cron-Secret header.
     Used by the free GitHub Actions cron to drive trading without an always-on host.
@@ -84,18 +86,9 @@ async def run_committee(ticker: str = None, market: str = Query('US'), request: 
         if provided != cron_secret:
             return JSONResponse(status_code=401, content={"error": "unauthorized"})
     try:
-        from backend.orchestrator import run_full_committee, run_committee_for_ticker
-        from backend.broker.paper_broker import get_portfolio
-        from backend.db.crud import get_peak_portfolio_value
+        from backend.orchestrator import run_full_committee
 
         mkt = market.upper()
-        if ticker:
-            portfolio_data = await get_portfolio(mkt)
-            async with AsyncSessionLocal() as db:
-                peak = await get_peak_portfolio_value(db, mkt)
-            result = await run_committee_for_ticker(ticker.upper(), portfolio_data, peak, mkt)
-            return result
-
         results = await run_full_committee(mkt)
         return {"market": mkt, "sessions": results, "count": len(results)}
     except Exception as exc:
