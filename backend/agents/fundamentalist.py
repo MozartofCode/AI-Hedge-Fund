@@ -1,5 +1,5 @@
 """
-Fundamentalist agent — FMP financial data + Claude analysis.
+Fundamentalist agent — FMP financial data + LLM analysis.
 Round 3 additions: revenue acceleration, EPS acceleration, gross margin expansion YoY,
 FCF inflection detection, R&D intensity, cash-to-debt ratio.
 Round 4 additions: trust-weighted analyst consensus (winsorized), bootstrap CI,
@@ -11,7 +11,7 @@ import time
 import numpy as np
 import yfinance as yf
 from datetime import datetime
-from backend.agents.base_agent import call_claude
+from backend.agents.base_agent import call_llm
 from backend.data.fmp_client import (
     get_profile, get_income_statement, get_balance_sheet,
     get_cash_flow, get_analyst_ratings, get_earnings_calendar,
@@ -417,7 +417,7 @@ def _get_fundamental_data(ticker: str) -> dict:
     return data
 
 
-def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dict:
+def get_vote(ticker: str, model: str = None, provider: str = "groq") -> dict:
     try:
         d = _get_fundamental_data(ticker)
         profile, income, balance = d["profile"], d["income"], d["balance"]
@@ -724,7 +724,7 @@ def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dic
             "buyback_yield_pct":         buyback_yield_pct,
         }
 
-        result = call_claude(
+        result = call_llm(
             SYSTEM_PROMPT,
             f"Fundamental analysis for {ticker}: {json.dumps(market_data)}",
             "fundamentalist",
@@ -755,7 +755,7 @@ def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dic
             dcf_price,
         )
 
-        # Append all valuation + section data to the Claude result
+        # Append all valuation + section data to the LLM result
         result.update({
             "company_name":     company_name,
             "spot_price":       round(spot_price, 2) if spot_price else None,

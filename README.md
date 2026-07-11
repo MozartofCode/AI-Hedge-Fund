@@ -46,8 +46,7 @@ tracked live.
                     └──────────────────────────────┘
 ```
 
-**AI Models:** Claude Haiku for the agents · Groq Llama (default) or Claude for the Chairman,
-selectable with `SCHEDULED_PROVIDER`
+**AI Models:** Groq Llama for the agents and the Chairman
 **Data:** yfinance (prices, free) · Finnhub (news) · FMP (fundamentals & screener)
 
 ---
@@ -58,23 +57,10 @@ selectable with `SCHEDULED_PROVIDER`
   positions tracked live with a P&L heatmap and trade history
 - **Committee transparency** — click any position or trade to see every agent's vote and the
   Chairman's rationale
-- **Daily budget guard** — Claude spend is capped (default $1.25/day) so there are no
-  surprise bills
+- **Free to run** — Groq's free Llama tier powers every agent and the Chairman, so there's no
+  per-call API spend
 - **Plain-English results** — all agent rationales and metric labels are written for everyday
   investors, not finance professionals
-
----
-
-## Cost Profile
-
-| Component | Model | Cost |
-|---|---|---|
-| 4 stock agents (per ticker) | Claude Haiku | ~$0.002 |
-| Chairman (per BUY/SELL) | Claude Haiku / Groq | ~$0.001 |
-| Scheduled committee (daily, ~30 tickers) | Haiku | ~$0.91/day |
-
-Using Groq's free Llama tier for the scheduled trader (`SCHEDULED_PROVIDER=groq`, the default)
-drops the daily Claude spend close to zero.
 
 ---
 
@@ -84,13 +70,10 @@ drops the daily Claude spend close to zero.
 
 **Backend:**
 ```
-ANTHROPIC_API_KEY=sk-ant-...
 GROQ_API_KEY=...
-SCHEDULED_PROVIDER=groq
 DATABASE_URL=postgresql+asyncpg://postgres:PASSWORD@db.<project>.supabase.co:5432/postgres
 FINNHUB_API_KEY=...
 FMP_API_KEY=...
-DAILY_BUDGET_USD=1.25
 COMMITTEE_MAX_TICKERS=30
 FRONTEND_URL=https://your-app.vercel.app
 ```

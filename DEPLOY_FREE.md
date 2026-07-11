@@ -14,10 +14,10 @@ Instead a free GitHub Actions cron POSTs to `/api/run-committee` at market times
 
 1. **Backend → Render**
    - Render dashboard → **New → Blueprint** → select this repo (uses `render.yaml`).
-   - When prompted, fill the secret env vars: `GROQ_API_KEY`, `ANTHROPIC_API_KEY`,
+   - When prompted, fill the secret env vars: `GROQ_API_KEY`,
      `DATABASE_URL`, `FINNHUB_API_KEY`, `FMP_API_KEY`,
      `FRONTEND_URL`, and a `CRON_SECRET` (any random string you choose).
-   - `ENABLE_SCHEDULER=false` and `SCHEDULED_PROVIDER=groq` are set by the blueprint.
+   - `ENABLE_SCHEDULER=false` is set by the blueprint.
    - Note your service URL, e.g. `https://ai-hedge-fund-api.onrender.com`.
 
 2. **Cron → GitHub Actions** (already in `.github/workflows/committee.yml`)
@@ -62,9 +62,7 @@ did on Railway — no GitHub cron needed.
 
 | Var | Purpose |
 |-----|---------|
-| `GROQ_API_KEY` | Automatic trader (free Llama via Groq) |
-| `ANTHROPIC_API_KEY` | Chairman synthesis + Haiku agent fallback (Claude) |
-| `SCHEDULED_PROVIDER` | `groq` (default) or `anthropic` |
+| `GROQ_API_KEY` | LLM provider for all agents + Chairman (free Llama via Groq) |
 | `ENABLE_SCHEDULER` | `true` on always-on hosts; `false` on free/sleeping hosts |
 | `CRON_SECRET` | Shared secret; if set, `/api/run-committee` requires `X-Cron-Secret` |
 | `DATABASE_URL` | Supabase Postgres connection string |

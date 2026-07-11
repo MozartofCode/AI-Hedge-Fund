@@ -5,7 +5,6 @@ asyncpg
 alembic
 httpx
 finnhub-python
-anthropic
 groq
 apscheduler
 python-dotenv

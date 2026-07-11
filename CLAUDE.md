@@ -13,7 +13,7 @@ trades $1,000,000 of paper money — no brokerage account needed.
 | Backend | Python + FastAPI + APScheduler |
 | Frontend | React 18 + Tailwind CSS + Recharts — Vercel |
 | Database | PostgreSQL — Supabase |
-| AI | Claude Haiku (agents) + Groq Llama / Claude (Chairman), via `SCHEDULED_PROVIDER` |
+| AI | Groq Llama (agents + Chairman) |
 | Market Data | yfinance (prices, free), Finnhub (news), FMP (fundamentals & screener) |
 
 ---
@@ -29,7 +29,7 @@ AI-Hedge-Fund/
 │   ├── markets.py                    # US market hours + is_market_open()
 │   ├── screener.py                   # Dynamic US watchlist (FMP screener + seed list)
 │   ├── agents/
-│   │   ├── base_agent.py             # call_claude()/call_llm(), daily budget guard, provider config
+│   │   ├── base_agent.py             # call_llm(), Groq client + model config
 │   │   ├── technician.py             # Multi-TF TA: EMA/RSI/MACD/ATR/BB/OB/Fib
 │   │   ├── fundamentalist.py         # FMP financials + yfinance fallback
 │   │   ├── newshound.py              # Finnhub news & sentiment
@@ -49,7 +49,7 @@ AI-Hedge-Fund/
 │       ├── portfolio.py              # GET /api/portfolio
 │       ├── trades.py                 # GET /api/trades
 │       ├── debates.py                # GET /api/session/{id}, GET /api/latest-session/{ticker}
-│       └── stats.py                  # GET /api/stats (includes claude_daily_spend_usd)
+│       └── stats.py                  # GET /api/stats
 ├── frontend/
 │   └── src/
 │       ├── pages/
@@ -63,29 +63,20 @@ AI-Hedge-Fund/
 
 ---
 
-## Models & Cost
+## Models
 
 ```python
-AGENT_MODEL             = "claude-haiku-4-5-20251001"   # all agents
-CHAIRMAN_SCHEDULE_MODEL = "claude-haiku-4-5-20251001"   # Chairman (Claude path)
-GROQ_AGENT_MODEL        = "llama-3.3-70b-versatile"     # free Groq path (default)
-
-SCHEDULED_PROVIDER = os.getenv("SCHEDULED_PROVIDER", "groq")   # "groq" | "anthropic"
-DAILY_BUDGET_USD   = float(os.getenv("DAILY_BUDGET_USD", "1.00"))
+AGENT_MODEL             = "llama-3.3-70b-versatile"     # all agents (Groq, free tier)
+CHAIRMAN_SCHEDULE_MODEL = "llama-3.3-70b-versatile"     # Chairman
 ```
 
-call_claude() checks the daily budget before every Claude call and returns a HOLD
-fallback if the cap is reached. Cost is tracked in a module-level _budget dict that resets
-at midnight UTC. With `SCHEDULED_PROVIDER=groq` (default), the scheduled trader uses the
-free Groq Llama tier and Claude spend stays near zero.
-
-Recommended env var: DAILY_BUDGET_USD=1.25 (covers a Claude-only run with headroom).
+Groq's free tier is the sole LLM provider — no API spend to track or cap.
 
 ---
 
 ## The Agents (5)
 
-| Agent | Data Source | Claude? | Role |
+| Agent | Data Source | LLM? | Role |
 |---|---|---|---|
 | Technician | yfinance OHLCV (daily/weekly/monthly) | Yes | EMA, RSI, MACD, ATR, Bollinger Bands, order blocks, Fibonacci |
 | Fundamentalist | FMP (yfinance fallback if FMP empty) | Yes | P/E, revenue growth, FCF, margins, DCF, analyst consensus |
@@ -131,13 +122,10 @@ Rows carry a `market` column (always `'US'`). `Base.metadata.create_all` runs on
 ## Environment Variables
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
 GROQ_API_KEY=...
-SCHEDULED_PROVIDER=groq
 DATABASE_URL=postgresql+asyncpg://postgres:PASSWORD@db.<project>.supabase.co:5432/postgres
 FINNHUB_API_KEY=...
 FMP_API_KEY=...
-DAILY_BUDGET_USD=1.25
 COMMITTEE_MAX_TICKERS=30
 ENABLE_SCHEDULER=true
 CRON_SECRET=

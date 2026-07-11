@@ -17,7 +17,7 @@ import time
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from backend.agents.base_agent import call_claude
+from backend.agents.base_agent import call_llm
 from backend.data.indicators import (
     calc_rsi, calc_macd, calc_sma, calc_bbands,
     calc_atr, calc_volume_ratio, calc_adx, calc_roc,
@@ -465,7 +465,7 @@ Synthesis rule: Score higher when multiple timeframes agree (monthly uptrend + w
 #  Main agent function
 # ══════════════════════════════════════════════════════════════════════════════
 
-def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dict:
+def get_vote(ticker: str, model: str = None, provider: str = "groq") -> dict:
     cache_key = f"{ticker}:{provider}"
     cached = _cache.get(cache_key)
     if cached and time.time() - cached["ts"] < _CACHE_TTL:
@@ -712,7 +712,7 @@ def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dic
             **monthly_data,
         }
 
-        vote = call_claude(
+        vote = call_llm(
             SYSTEM_PROMPT,
             f"Technical analysis for {ticker}: {json.dumps(_clean_nans(market_data))}",
             "technician",

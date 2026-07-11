@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from backend.agents.base_agent import (
-    call_claude,
+    call_llm,
     scheduled_agent_config, scheduled_chairman_config,
 )
 from backend.agents import technician, fundamentalist, newshound, macro_watcher, risk_manager
@@ -127,7 +127,7 @@ async def run_committee_for_ticker(
     ticker: str, portfolio: dict, peak_value: float, market: str = 'US'
 ) -> dict:
     # Run 4 data agents in parallel — automatic trader uses the scheduled provider
-    # (Groq by default; configurable via SCHEDULED_PROVIDER).
+    # (Groq).
     ag_model, ag_provider = scheduled_agent_config()
     tech_vote, fund_vote, news_vote, macro_vote = await asyncio.gather(
         asyncio.to_thread(technician.get_vote, ticker, ag_model, ag_provider),
@@ -169,8 +169,8 @@ async def run_committee_for_ticker(
         decision      = "HOLD"
         position_size = 0.0
 
-    # ── Chairman rationale via Claude (only on BUY / SELL — skip HOLDs) ─────────
-    # HOLDs are ~85% of all tickers. Skipping Sonnet on HOLDs cuts costs ~80%.
+    # ── Chairman rationale via LLM (only on BUY / SELL — skip HOLDs) ────────────
+    # HOLDs are ~85% of all tickers. Skipping the Chairman call on HOLDs cuts cost.
     final_decision = decision
     final_size     = position_size
     rationale      = f"HOLD — score {score:.2f} is between thresholds. No action."
@@ -201,12 +201,12 @@ async def run_committee_for_ticker(
             ],
         }
         ch_model, ch_provider = scheduled_chairman_config()
-        chairman_out = call_claude(
+        chairman_out = call_llm(
             CHAIRMAN_SYSTEM,
             f"Committee analysis: {json.dumps(chairman_input)}",
             "chairman",
             max_tokens=300,   # concise — 300 tokens is plenty for a 3-bullet rationale
-            model=ch_model,        # Groq by default (SCHEDULED_PROVIDER), Haiku fallback
+            model=ch_model,
             provider=ch_provider,
         )
         final_decision = chairman_out.get("decision", decision)

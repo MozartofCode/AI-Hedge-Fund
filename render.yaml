@@ -13,12 +13,8 @@ services:
     envVars:
       - key: ENABLE_SCHEDULER
         value: "false"
-      - key: SCHEDULED_PROVIDER
-        value: groq
       # Secrets — set the values in the Render dashboard (sync:false = not in git)
       - key: GROQ_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
         sync: false
       - key: DATABASE_URL
         sync: false

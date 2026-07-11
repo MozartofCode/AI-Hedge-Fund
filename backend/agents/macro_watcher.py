@@ -7,7 +7,7 @@ Cached 30 min so macro data is fetched once per session.
 import json
 import time
 import yfinance as yf
-from backend.agents.base_agent import call_claude
+from backend.agents.base_agent import call_llm
 from backend.data.indicators import calc_sma
 from backend.data.finnhub_client import get_economic_calendar
 
@@ -279,7 +279,7 @@ def _get_macro_snapshot() -> dict:
     return data
 
 
-def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dict:
+def get_vote(ticker: str, model: str = None, provider: str = "groq") -> dict:
     try:
         macro = _get_macro_snapshot()
 
@@ -312,7 +312,7 @@ def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dic
             "market_breadth_rsp_spy":  macro["market_breadth_rsp_spy"],
         }
 
-        result = call_claude(
+        result = call_llm(
             SYSTEM_PROMPT,
             f"Macro analysis for {ticker}: {json.dumps(market_data)}",
             "macro_watcher",

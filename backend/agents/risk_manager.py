@@ -91,7 +91,7 @@ _SECTOR_MAP = {
 
 def get_vote(ticker: str, portfolio: dict, peak_value: float = None) -> dict:
     """
-    Pure logic — no IO, no Claude call.
+    Pure logic — no IO, no LLM call.
     Returns force_sell=True for stop-loss triggers.
     Returns take_profit=True for profit-target triggers.
     Returns veto=True to block BUYs.

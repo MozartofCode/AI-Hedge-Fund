@@ -7,7 +7,7 @@ import json
 import time
 import pandas as pd
 import yfinance as yf
-from backend.agents.base_agent import call_claude
+from backend.agents.base_agent import call_llm
 from backend.data.finnhub_client import (
     get_company_news, get_news_sentiment, get_insider_sentiment, get_earnings_surprise,
 )
@@ -70,7 +70,7 @@ Standard signals:
 Prefer SELL with low confidence over HOLD when bearish. Reserve HOLD for genuine neutrality."""
 
 
-def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dict:
+def get_vote(ticker: str, model: str = None, provider: str = "groq") -> dict:
     # Return cached result if fresh enough
     cache_key = f"{ticker}:{provider}"
     cached = _cache.get(cache_key)
@@ -233,7 +233,7 @@ def get_vote(ticker: str, model: str = None, provider: str = "anthropic") -> dic
             "call_vol_to_oi":            call_vol_to_oi,        # ★
         }
 
-        result = call_claude(
+        result = call_llm(
             SYSTEM_PROMPT,
             f"News/sentiment analysis for {ticker}: {json.dumps(market_data)}",
             "newshound",

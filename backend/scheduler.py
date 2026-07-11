@@ -7,9 +7,9 @@ from backend.markets import MARKETS
 
 scheduler = AsyncIOScheduler()
 
-# One midday US session per day — keeps Claude spend under $1/day.
+# One midday US session per day.
 # To trade more often, add tuples (e.g. [(10, 0), (12, 30), (15, 0)]); each
-# extra session roughly doubles the daily Claude cost.
+# extra session roughly doubles the daily API call volume.
 _MARKET_SESSIONS = {
     "US": [(11, 30)],
 }
