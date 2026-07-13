@@ -24,7 +24,8 @@ Instead a free GitHub Actions cron POSTs to `/api/run-committee` at market times
    - Repo → **Settings → Secrets and variables → Actions → New repository secret**:
      - `BACKEND_URL` = your Render URL (no trailing slash)
      - `CRON_SECRET` = the same value you set on Render
-   - The workflow runs weekdays at 16:00 UTC; it's skipped when the US market is closed.
+   - The workflow runs weekdays at 15:00 and 19:00 UTC (twice a day); it's skipped
+     when the US market is closed.
    - Test it now: **Actions tab → Trading Committee → Run workflow**.
 
 3. **Frontend → Vercel** (unchanged): set `VITE_API_URL` to your Render URL.

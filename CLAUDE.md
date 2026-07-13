@@ -94,7 +94,7 @@ Thresholds: BUY >= 0.52 · SELL <= 0.45 (see `BUY_THRESHOLD` / `SELL_THRESHOLD` 
 
 ## Scheduler
 
-US session — 1/day (Mon–Fri, US/Eastern): 11:30
+US session — 2/day (Mon–Fri, US/Eastern): 10:00 and 14:00
 Portfolio snapshots — every 30 min during market hours.
 
 `COMMITTEE_MAX_TICKERS` env var (default 30) limits tickers per session.

@@ -7,11 +7,11 @@ from backend.markets import MARKETS
 
 scheduler = AsyncIOScheduler()
 
-# One midday US session per day.
-# To trade more often, add tuples (e.g. [(10, 0), (12, 30), (15, 0)]); each
-# extra session roughly doubles the daily API call volume.
+# Two US sessions per day (market open + midday), Mon-Fri, US/Eastern.
+# Add/remove tuples to change cadence; each extra session roughly multiplies
+# the daily API call volume.
 _MARKET_SESSIONS = {
-    "US": [(11, 30)],
+    "US": [(10, 0), (14, 0)],
 }
 
 
