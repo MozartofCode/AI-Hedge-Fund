@@ -16,7 +16,6 @@ MARKETS = {
         "timezone":        "America/New_York",
         "open":            dtime(9, 30),
         "close":           dtime(16, 0),
-        "slack_notify":    True,
         # Static watchlist is the fallback seed — the screener dynamically
         # expands this to 200+ tickers per session using FMP + yfinance.
         # See backend/screener.py for the full seed list and dynamic logic.

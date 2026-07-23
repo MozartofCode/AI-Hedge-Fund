@@ -16,7 +16,6 @@ from backend.db.crud import (
 )
 from backend.markets import MARKETS, is_market_open
 from backend.screener import get_watchlist
-from backend.notifications.slack_notifier import notify_trade
 
 # ── Base agent weights (regime-adjusted in _get_weights) ─────────────────────
 _BASE_WEIGHTS = {
@@ -243,7 +242,6 @@ async def run_committee_for_ticker(
 
         order_placed = False
         order_id     = None
-        market_cfg   = MARKETS.get(market.upper(), MARKETS["US"])
 
         if is_market_open(market) and final_decision in ("BUY", "SELL") and final_size > 0:
             try:
@@ -259,22 +257,6 @@ async def run_committee_for_ticker(
                     "order_id":     order_id,
                 }, market)
 
-                # Slack only for US market (or markets with slack_notify=True)
-                if market_cfg.get("slack_notify", False):
-                    _votes_for_slack = [
-                        {"agent_name": v.get("agent"), "action": v.get("action", "HOLD"),
-                         "confidence": v.get("confidence", 0.0), "veto": False}
-                        for v in agent_votes
-                    ] + [{
-                        "agent_name": "risk_manager", "action": "HOLD",
-                        "confidence": 0.0, "veto": risk_vote.get("veto", False),
-                    }]
-                    await notify_trade(
-                        ticker=ticker, side=final_decision.lower(),
-                        qty=order.get("qty", 0), price=order.get("price", 0.0),
-                        chairman_rationale=rationale, agent_votes=_votes_for_slack,
-                        weighted_score=score,
-                    )
             except Exception as e:
                 rationale += f" [Order failed: {e}]"
 

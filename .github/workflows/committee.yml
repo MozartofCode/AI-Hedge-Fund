@@ -1,0 +1,29 @@
+name: Trading Committee
+
+on:
+  schedule:
+    # Twice a day, Mon-Fri, timed to land inside 9:30-16:00 ET regardless of
+    # EST/EDT: 15:00 UTC (~10:00/11:00 ET) and 19:00 UTC (~14:00/15:00 ET).
+    # The backend also checks is_market_open() and no-ops outside market hours.
+    - cron: '0 15 * * 1-5'
+    - cron: '0 19 * * 1-5'
+  workflow_dispatch: {}   # manual trigger from the Actions tab
+
+jobs:
+  run-committee:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger committee run
+        run: |
+          status=$(curl -s -o response.json -w "%{http_code}" \
+            -X POST "${BACKEND_URL}/api/run-committee" \
+            -H "X-Cron-Secret: ${CRON_SECRET}")
+          echo "HTTP status: $status"
+          cat response.json
+          if [ "$status" -ge 400 ]; then
+            echo "Committee run failed"
+            exit 1
+          fi
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
